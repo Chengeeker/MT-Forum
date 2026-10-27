@@ -232,12 +232,12 @@ class SettingsPage extends StatelessWidget {
                 ),
                 ReviewPreferenceTile(
                   title: '关于 MT论坛',
-                  subtitle: '1.5.5 · Material 3',
+                  subtitle: '1.0.0 · Material 3',
                   leading: const Icon(Icons.info_outline),
                   onTap: () => showAboutDialog(
                     context: context,
                     applicationName: 'MT论坛',
-                    applicationVersion: '1.5.5',
+                    applicationVersion: '1.0.0',
                     children: [
                       const Text(
                         '第三方论坛客户端。论坛账号与内容由 bbs.binmt.cc 提供。界面组件复用 Review（MIT，© 2026 Chengeeker）。',

@@ -1,6 +1,6 @@
 # MT论坛开发文档
 
-更新：2026-10-27。版本：1.5.5+20。主文档同步至 `D:\App\开发文档\MT论坛.md`。
+更新：2026-10-27。当前版本：1.0.0+20（版本名回退；versionCode 保持 20）。主文档同步至 `D:\App\开发文档\MT论坛.md`。
 
 ## 用户要求与边界
 - Android 包名 `bbs.binmt.cc`，应用名 MT论坛，仅 ARM64-v8a。
@@ -352,3 +352,9 @@
 - APK：D:\App\MT论坛\MT论坛_v1.5.5_arm64.apk；25,086,084 字节；包名 bbs.binmt.cc，版本 1.5.5+20，minSdk 24、targetSdk 36，仅 arm64-v8a。SHA-256：08b7171fa56b3f167b5849eb710c3ba0b7275dbf0219e754a050ae193f815cc3。
 - aapt 包信息、apksigner v2 既有证书、原 icon 资源哈希和 16KB 对齐已核验。日志 build/message-layout-v1.5.5-tests.log、build/message-layout-v1.5.5-privacy-tests.log、build/message-layout-v1.5.5-analyze.log 和 build/message-layout-v1.5.5-build.log；核验清单 build/release-verification.json。
 - v1.5.4 APK、签名和核验记录归档 build/rollback，已校验旧包哈希；无签名材料的源码快照为 build/source-snapshots/v1.5.5，正式编译用 lib/assets/packages 与项目哈希一致。设备当前安装 v1.5.4，本轮未安装 v1.5.5；新包真实通知、复杂正文和筛选保存仍需设备验证，未执行真实屏蔽或保存操作。
+
+## 2026-10-27 版本名回退（1.0.0+20）
+- 用户要求应用版本名恢复为 1.0.0。pubspec、关于页和发布脚本校验/文件名已同步；Android versionCode 保持 20，允许覆盖此前已安装的低 versionCode 构建。
+- 历史 v1.5.x 记录不改写；本次只改变版本名，不代表功能源码回退。
+
+- 版本名回退正式包：D:\App\MT论坛\MT论坛_v1.0.0_arm64.apk，25086084 字节，版本 1.0.0+20，包名 bbs.binmt.cc，仅 arm64-v8a，SHA-256 c6e4e12aec7fef1e8390791e7f5bdf5da6474bd4a43545b8ad10a3b0c1ea2735。BUILD SUCCESSFUL；aapt、apksigner v2 和 zipalign 16KB 核验通过。只对版本元数据重新构建，未重跑 Flutter 测试/分析，未安装到设备。旧 v1.5.5 包及核验记录保存于 build/rollback。
