@@ -77,6 +77,34 @@ class HomeDetailClient extends FakeClient {
   }
 }
 
+class PaginatedHomeClient extends FakeClient {
+  int nextCalls = 0;
+  final page = Completer<ForumDocument>();
+  @override
+  Future<ForumDocument> load(String url) async {
+    if (url.contains('page=2')) {
+      nextCalls++;
+      return page.future;
+    }
+    if (url.contains('mod=guide')) {
+      return ForumDocument(
+        title: '最新发表',
+        links: [
+          for (var i = 0; i < 15; i++)
+            ForumLink(
+              '分页帖子$i',
+              '$forumOrigin/thread-${100 + i}-1-1.html',
+              author: '作者$i',
+              excerpt: '摘要$i',
+            ),
+        ],
+        next: '$forumOrigin/forum.php?mod=guide&view=newthread&page=2',
+      );
+    }
+    return super.load(url);
+  }
+}
+
 class ControlledClient extends ForumClient {
   @override
   Future<ThreadSummary> threadSummary(
@@ -167,6 +195,54 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     return Preferences(await SharedPreferences.getInstance());
   }
+
+  testWidgets('首页最新惰性分页、合并去重，末页重复上拉不重复请求', (tester) async {
+    final client = PaginatedHomeClient();
+    await tester.pumpWidget(
+      MtForumApp(
+        preferences: await prefs(),
+        client: client,
+        useBrowserReader: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('分页帖子14', findRichText: true), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('分页帖子14', findRichText: true),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    expect(client.nextCalls, 1);
+    client.page.complete(
+      const ForumDocument(
+        title: '最新发表',
+        links: [
+          ForumLink('分页帖子14', '$forumOrigin/thread-114-1-1.html'),
+          ForumLink(
+            '末页新增帖子',
+            '$forumOrigin/thread-115-1-1.html',
+            excerpt: '末页摘要',
+          ),
+        ],
+        next: '$forumOrigin/forum.php?mod=guide&view=newthread&page=2',
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('已经到底了'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('末页新增帖子', findRichText: true), findsOneWidget);
+    expect(find.text('末页摘要'), findsOneWidget);
+    for (var i = 0; i < 3; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+      await tester.pumpAndSettle();
+    }
+    expect(client.nextCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('悬浮底栏按下没有水波纹，选中胶囊平滑移动', (tester) async {
     await tester.pumpWidget(

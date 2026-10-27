@@ -13,6 +13,7 @@ import 'package:mt_forum/data/preferences.dart';
 import 'package:mt_forum/pages/login_page.dart';
 import 'package:mt_forum/pages/native_forum_page.dart';
 import 'package:mt_forum/pages/account_page.dart';
+import 'package:mt_forum/pages/forum_page.dart';
 import 'package:mt_forum/pages/web_page.dart';
 import 'package:mt_forum/core/design_system/components/review_frosted_app_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -165,6 +166,7 @@ class SubmitAdapter implements HttpClientAdapter {
 }
 
 class SearchClient extends NativeClient {
+  Completer<(String, Uri)>? pending;
   @override
   Future<String> source(String url) async =>
       '<div id="hd"><form id="scform" method="post" action="search.php?searchsubmit=yes"><input type="hidden" name="formhash" value="search-token"><input name="srchtxt"><button name="searchsubmit" type="submit">搜索</button></form></div><div id="ct">首页</div>';
@@ -175,8 +177,9 @@ class SearchClient extends NativeClient {
     String method = 'POST',
   }) async {
     submitted = fields;
+    if (pending != null) return pending!.future;
     return (
-      '<div id="threadlist"><a href="thread-123-1-1.html">原生搜索结果</a></div>',
+      File('test/fixtures/search.html').readAsStringSync(),
       forumUri('search.php?mod=forum&searchid=123'),
     );
   }
@@ -816,7 +819,40 @@ void main() {
     expect(client.submitted?['srchtxt'], 'fixture keyword');
     expect(client.submitted?['formhash'], 'search-token');
     expect(find.text('原生搜索结果', findRichText: true), findsOneWidget);
+    expect(find.byType(ThreadTile), findsOneWidget);
+    expect(find.text('搜索作者'), findsOneWidget);
+    expect(find.textContaining('这是一段搜索结果正文摘要'), findsOneWidget);
+    expect(find.text('495'), findsOneWidget);
     expect(find.byType(ForumWebPage), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('搜索提交等待期间不展示取令牌的首页内容', (tester) async {
+    final pending = Completer<(String, Uri)>();
+    final client = SearchClient()..pending = pending;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NativeForumPage(
+          title: '搜索',
+          uri: forumUri('/'),
+          client: client,
+          preferences: Preferences(await SharedPreferences.getInstance()),
+          search: 'fixture keyword',
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(client.submitted?['srchtxt'], 'fixture keyword');
+    expect(find.text('首页', findRichText: true), findsNothing);
+    expect(find.byType(ThreadTile), findsNothing);
+    pending.complete((
+      File('test/fixtures/search.html').readAsStringSync(),
+      forumUri('search.php?mod=forum&searchid=123'),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byType(ThreadTile), findsOneWidget);
+    expect(find.byType(ForumPage), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

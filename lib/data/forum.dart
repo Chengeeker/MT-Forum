@@ -249,9 +249,16 @@ ForumDocument parseForum(String source, Uri base) {
     if (label.isEmpty || RegExp(r'^\d+$').hasMatch(label)) continue;
     final tid = threadId(uri);
     if (tid != null && threadSeen.add(tid)) {
-      final row = _ancestor(a, 'tr') ?? _ancestor(a, 'tbody') ?? a.parent;
+      final searchCard = base.path == '/search.php' ? _ancestor(a, 'li') : null;
+      final row =
+          searchCard ?? _ancestor(a, 'tr') ?? _ancestor(a, 'tbody') ?? a.parent;
+      final paragraphs = searchCard?.querySelectorAll('p') ?? <Element>[];
+      final counts = paragraphs.isEmpty ? '' : _clean(paragraphs.first.text);
+      final searchMeta = paragraphs.length > 1 ? paragraphs.last : null;
       final by = _clean(row?.querySelector('.by')?.text ?? '');
-      final user = row?.querySelector('.km_user a, .by cite a');
+      final user =
+          row?.querySelector('.km_user a, .by cite a') ??
+          searchMeta?.querySelector('a[href*="uid"],a[href*="username"]');
       final avatar = _secureMediaUri(
         row?.querySelector('.comiis_listtx img')?.attributes['src'],
         base,
@@ -265,11 +272,19 @@ ForumDocument parseForum(String source, Uri base) {
           imageUrl:
               avatar?.toString() ??
               authorAvatar(user?.attributes['href'], base),
-          date: _clean(
-            row?.querySelector('.km_user + em span, .by em span')?.text ?? '',
-          ),
-          views: _clean(row?.querySelector('.km_view, .num em')?.text ?? ''),
-          replies: _clean(row?.querySelector('.km_reply, .num a')?.text ?? ''),
+          excerpt: paragraphs.length > 2 ? _clean(paragraphs[1].text) : '',
+          date: searchMeta != null
+              ? _clean(searchMeta.text).split(' - ').first
+              : _clean(
+                  row?.querySelector('.km_user + em span, .by em span')?.text ??
+                      '',
+                ),
+          views:
+              RegExp(r'([\d.,万亿]+)\s*次?查看').firstMatch(counts)?.group(1) ??
+              _clean(row?.querySelector('.km_view, .num em')?.text ?? ''),
+          replies:
+              RegExp(r'([\d.,万亿]+)\s*个?回复').firstMatch(counts)?.group(1) ??
+              _clean(row?.querySelector('.km_reply, .num a')?.text ?? ''),
           pinned: _ancestor(a, 'tbody')?.id.startsWith('stickthread_') == true,
           hot: row?.querySelector('img[alt="heatlevel"]') != null,
         ),

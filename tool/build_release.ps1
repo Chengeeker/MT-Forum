@@ -66,7 +66,7 @@ try {
     } finally { $archive.Dispose() }
     $sdkTools = Join-Path $env:LOCALAPPDATA 'Android\Sdk\build-tools\37.0.0'
     $badging = & (Join-Path $sdkTools 'aapt.exe') dump badging $apk
-    if ($LASTEXITCODE -or $badging[0] -notmatch "name='bbs.binmt.cc' versionCode='20' versionName='1.0.0'") { throw 'Package or version mismatch' }
+    if ($LASTEXITCODE -or $badging[0] -notmatch "name='bbs.binmt.cc' versionCode='21' versionName='1.0.0'") { throw 'Package or version mismatch' }
     & (Join-Path $sdkTools 'apksigner.bat') verify $apk
     if ($LASTEXITCODE) { throw 'Signature verification failed' }
     $destination = Join-Path $projectRoot 'MT论坛_v1.0.0_arm64.apk'

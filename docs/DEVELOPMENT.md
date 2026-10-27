@@ -1,6 +1,6 @@
 # MT论坛开发文档
 
-更新：2026-10-27。当前版本：1.0.0+20（版本名回退；versionCode 保持 20）。主文档同步至 `D:\App\开发文档\MT论坛.md`。
+更新：2026-10-28。当前版本：1.0.0+21。主文档同步至 `D:\App\开发文档\MT论坛.md`。
 
 ## 用户要求与边界
 - Android 包名 `bbs.binmt.cc`，应用名 MT论坛，仅 ARM64-v8a。
@@ -358,3 +358,11 @@
 - 历史 v1.5.x 记录不改写；本次只改变版本名，不代表功能源码回退。
 
 - 版本名回退正式包：D:\App\MT论坛\MT论坛_v1.0.0_arm64.apk，25086084 字节，版本 1.0.0+20，包名 bbs.binmt.cc，仅 arm64-v8a，SHA-256 c6e4e12aec7fef1e8390791e7f5bdf5da6474bd4a43545b8ad10a3b0c1ea2735。BUILD SUCCESSFUL；aapt、apksigner v2 和 zipalign 16KB 核验通过。只对版本元数据重新构建，未重跑 Flutter 测试/分析，未安装到设备。旧 v1.5.5 包及核验记录保存于 build/rollback。
+
+## 2026-10-28 搜索原生列表与首页连续加载（1.0.0+21）
+- 搜索请求此前先展示了用于取得动态搜索令牌的首页 HTML，再把搜索结果交给通用 HTML 渲染器。现在取得表单和提交期间不设置可见 document；结果原位使用 ForumPage/ThreadTile，保持同一路由，解析作者、头像、摘要、回复/浏览及日期，使用官网下一页地址。
+- 首页最新此前只渲染前 5 条，导读仅用于补全元数据。改为显示最新发表导读列表及其分页；惰性构建帖子卡片，页内与跨页按 URL 去重。加载失败保留已有列表并提供重试；请求受账号及刷新代次限制，重复/已读分页地址停止自动加载。
+- 首页禁用边缘拉伸与过度滚动装饰，保留下拉刷新；分页状态区保留最小高度，减少触底状态变动造成的跳动。真实设备上的 GPU/液态玻璃闪烁仍需设备观察。
+- 必要检查：6 项搜索/首页专项测试通过，包含延迟搜索期间不显示首页、搜索字段/令牌/原生卡片、分页去重及反复触底不重复请求、导读失败回退；dart analyze lib test 无问题。日志 build/search-feed-tests.log、build/search-feed-analyze.log。未扩大到全套回归，未安装设备或执行账号写操作。
+- 版本名沿用用户指定的 1.0.0；versionCode 增至 21。GitHub main 已有初始源码及版本名回退提交（4dffb5508d76c2114b8dd58188b8c2390de3ef77）；项目根目录没有 .git，推送检出位于 build/github-push-checkout，不上传 APK、签名文件或构建缓存。
+- 正式包：MT论坛_v1.0.0_arm64.apk，25,086,088 字节，SHA-256 5e3e4fcede409da31f5a0a8a0d1c92d5ff63348c90d273b505618d244177b8d8。构建成功，aapt 确认 1.0.0+21 / bbs.binmt.cc，ZIP 仅 ARM64-v8a；既有签名证书、原图标资源哈希、16KB 对齐以及 190 个生产源码/资源文件与编译目录一致性核验通过。核验清单 build/release-verification.json；code20 的同名 APK 已存 build/rollback/MT论坛_v1.0.0_code20_arm64.apk，避免与早期 1.0.0 回退包混淆。

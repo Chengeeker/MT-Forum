@@ -151,6 +151,14 @@ class NativeForumPageState extends State<NativeForumPage> {
           }
         }
       }
+      if (widget.search != null && mounted) {
+        final form = html.parse(source).querySelector('form#scform');
+        if (form == null) throw const ForumFailure('官网未返回搜索表单。');
+        final model = NativeForumForm(form, uri);
+        final values = model.values()..['srchtxt'] = widget.search;
+        await submit(model, values, model.buttons.firstOrNull);
+        return;
+      }
       setState(() {
         document = data;
         collectionRevision++;
@@ -161,13 +169,6 @@ class NativeForumPageState extends State<NativeForumPage> {
           (widget.embedded &&
               ['pm', 'notice'].contains(data.uri.queryParameters['do']))) {
         widget.onMessageDocument?.call(data);
-      }
-      if (widget.search != null && mounted) {
-        final form = html.parse(source).querySelector('form#scform');
-        if (form == null) throw const ForumFailure('官网未返回搜索表单。');
-        final model = NativeForumForm(form, widget.uri);
-        final values = model.values()..['srchtxt'] = widget.search;
-        await submit(model, values, model.buttons.firstOrNull);
       }
     } catch (e) {
       if (mounted && session == sessionRevision.value) {
@@ -864,124 +865,146 @@ class NativeForumPageState extends State<NativeForumPage> {
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: widget.embedded || (!dirty && !submitting),
-    onPopInvokedWithResult: (didPop, _) async {
-      if (widget.embedded) return;
-      if (!didPop && !submitting && await confirmDiscard() && context.mounted) {
-        Navigator.pop(context);
-      }
-    },
-    child: Scaffold(
-      appBar: widget.embedded
-          ? null
-          : ReviewFrostedAppBar(
-              title: Text(widget.title),
-              bottom: isPrivacy && (document?.privacyTabs.isNotEmpty ?? false)
-                  ? PreferredSize(
-                      preferredSize: Size.fromHeight(privacyTabHeight),
-                      child: DefaultTabController(
-                        key: ValueKey(currentUri.toString()),
-                        length: document!.privacyTabs.length,
-                        initialIndex: document!.privacyTabs
-                            .indexWhere((tab) => tab.selected)
-                            .clamp(0, document!.privacyTabs.length - 1),
-                        child: SizedBox(
-                          height: privacyTabHeight,
-                          child: Builder(
-                            builder: (tabContext) => TabBar(
-                              isScrollable: true,
-                              tabAlignment: TabAlignment.start,
-                              tabs: [
-                                for (final tab in document!.privacyTabs)
-                                  Tab(text: tab.label),
-                              ],
-                              onTap: (index) {
-                                final selected = document!.privacyTabs
-                                    .indexWhere((tab) => tab.selected)
-                                    .clamp(0, document!.privacyTabs.length - 1);
-                                DefaultTabController.of(tabContext).index =
-                                    selected;
-                                if (index != selected) {
-                                  openLink(document!.privacyTabs[index].url);
-                                }
-                              },
+  Widget build(BuildContext context) =>
+      document?.uri.path == '/search.php' &&
+          html.parse(document!.source).querySelector('#threadlist') != null
+      ? ForumPage(
+          key: ValueKey(document!.uri),
+          link: ForumLink(widget.title, document!.uri.toString()),
+          client: widget.client,
+          preferences: widget.preferences,
+          initialDocument: parseForum(document!.source, document!.uri),
+        )
+      : PopScope(
+          canPop: widget.embedded || (!dirty && !submitting),
+          onPopInvokedWithResult: (didPop, _) async {
+            if (widget.embedded) return;
+            if (!didPop &&
+                !submitting &&
+                await confirmDiscard() &&
+                context.mounted) {
+              Navigator.pop(context);
+            }
+          },
+          child: Scaffold(
+            appBar: widget.embedded
+                ? null
+                : ReviewFrostedAppBar(
+                    title: Text(widget.title),
+                    bottom:
+                        isPrivacy && (document?.privacyTabs.isNotEmpty ?? false)
+                        ? PreferredSize(
+                            preferredSize: Size.fromHeight(privacyTabHeight),
+                            child: DefaultTabController(
+                              key: ValueKey(currentUri.toString()),
+                              length: document!.privacyTabs.length,
+                              initialIndex: document!.privacyTabs
+                                  .indexWhere((tab) => tab.selected)
+                                  .clamp(0, document!.privacyTabs.length - 1),
+                              child: SizedBox(
+                                height: privacyTabHeight,
+                                child: Builder(
+                                  builder: (tabContext) => TabBar(
+                                    isScrollable: true,
+                                    tabAlignment: TabAlignment.start,
+                                    tabs: [
+                                      for (final tab in document!.privacyTabs)
+                                        Tab(text: tab.label),
+                                    ],
+                                    onTap: (index) {
+                                      final selected = document!.privacyTabs
+                                          .indexWhere((tab) => tab.selected)
+                                          .clamp(
+                                            0,
+                                            document!.privacyTabs.length - 1,
+                                          );
+                                      DefaultTabController.of(tabContext)
+                                              .index =
+                                          selected;
+                                      if (index != selected) {
+                                        openLink(
+                                          document!.privacyTabs[index].url,
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
+                          )
+                        : null,
+                    actions: [
+                      if (isFavorites)
+                        TextButton(
+                          onPressed: submitting
+                              ? null
+                              : () => setState(() {
+                                  managingFavorites = !managingFavorites;
+                                  selectedFavorites.clear();
+                                }),
+                          child: Text(managingFavorites ? '完成' : '管理收藏'),
+                        ),
+                      IconButton(
+                        tooltip: '刷新',
+                        onPressed: loading || submitting ? null : load,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+            body: SafeArea(
+              top: !widget.embedded,
+              bottom: !widget.embedded,
+              child: ListView(
+                controller: scroll,
+                padding: widget.contentPadding ?? const EdgeInsets.all(16),
+                children: [
+                  if (loading || submitting) const LinearProgressIndicator(),
+                  if (error != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
                         ),
                       ),
-                    )
-                  : null,
-              actions: [
-                if (isFavorites)
-                  TextButton(
-                    onPressed: submitting
-                        ? null
-                        : () => setState(() {
-                            managingFavorites = !managingFavorites;
-                            selectedFavorites.clear();
-                          }),
-                    child: Text(managingFavorites ? '完成' : '管理收藏'),
-                  ),
-                IconButton(
-                  tooltip: '刷新',
-                  onPressed: loading || submitting ? null : load,
-                  icon: const Icon(Icons.refresh),
-                ),
-              ],
+                    ),
+                  if (document == null && !loading)
+                    FilledButton.tonal(
+                      onPressed: sessionExpired
+                          ? () async {
+                              if (await showForumLogin(
+                                    context,
+                                    widget.client,
+                                    force: true,
+                                  ) &&
+                                  mounted) {
+                                await load();
+                              }
+                            }
+                          : load,
+                      child: Text(sessionExpired ? '重新登录' : '重试'),
+                    ),
+                  if (document != null)
+                    if (isFavorites)
+                      favoritesView()
+                    else if (document!.signIn != null)
+                      ForumSignInView(
+                        data: document!.signIn!,
+                        busy: loading || submitting,
+                        onSignIn: document!.signAction == null ? null : signIn,
+                        onLink: openLink,
+                        ranking: document!.signIn!.ranks == null
+                            ? null
+                            : contentView(document!.signIn!.ranks!),
+                      )
+                    else
+                      contentView(document!.content),
+                ],
+              ),
             ),
-      body: SafeArea(
-        top: !widget.embedded,
-        bottom: !widget.embedded,
-        child: ListView(
-          controller: scroll,
-          padding: widget.contentPadding ?? const EdgeInsets.all(16),
-          children: [
-            if (loading || submitting) const LinearProgressIndicator(),
-            if (error != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text(
-                  error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ),
-            if (document == null && !loading)
-              FilledButton.tonal(
-                onPressed: sessionExpired
-                    ? () async {
-                        if (await showForumLogin(
-                              context,
-                              widget.client,
-                              force: true,
-                            ) &&
-                            mounted) {
-                          await load();
-                        }
-                      }
-                    : load,
-                child: Text(sessionExpired ? '重新登录' : '重试'),
-              ),
-            if (document != null)
-              if (isFavorites)
-                favoritesView()
-              else if (document!.signIn != null)
-                ForumSignInView(
-                  data: document!.signIn!,
-                  busy: loading || submitting,
-                  onSignIn: document!.signAction == null ? null : signIn,
-                  onLink: openLink,
-                  ranking: document!.signIn!.ranks == null
-                      ? null
-                      : contentView(document!.signIn!.ranks!),
-                )
-              else
-                contentView(document!.content),
-          ],
-        ),
-      ),
-    ),
-  );
+          ),
+        );
 }
 
 class ForumSignInView extends StatelessWidget {

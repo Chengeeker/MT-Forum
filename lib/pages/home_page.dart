@@ -77,6 +77,10 @@ class _HomePageState extends State<HomePage> {
   final scroll = ScrollController();
   ForumDocument? document;
   List<ForumLink>? latest;
+  String? latestNext, latestError;
+  bool latestLoading = false;
+  int feedRevision = 0;
+  final latestPages = <String>{};
   String? error;
   bool loading = false, expanded = true;
   int revision = 0;
@@ -88,6 +92,11 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     sessionRevision.addListener(accountChanged);
     forumAuthenticated.addListener(authChanged);
+    scroll.addListener(() {
+      if (scroll.position.extentAfter < 600 && latestError == null) {
+        loadLatest();
+      }
+    });
     unawaited(forumAuthCookie());
     refresh();
   }
@@ -105,6 +114,11 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       document = null;
       latest = null;
+      feedRevision++;
+      latestNext = null;
+      latestError = null;
+      latestLoading = false;
+      latestPages.clear();
       error = null;
       loading = false;
       account = null;
@@ -159,32 +173,38 @@ class _HomePageState extends State<HomePage> {
   Future<void> refresh() async {
     if (loading) return;
     final generation = revision;
+    final feed = ++feedRevision;
     setState(() {
       loading = true;
       error = null;
+      latestError = null;
+      latestLoading = false;
     });
     try {
       final data = await widget.client.load('$forumOrigin/');
       if (!mounted || generation != revision) return;
       setState(() {
         document = data;
-        latest = data.latest;
+        latest ??= data.latest;
       });
-      if (data.latest.isNotEmpty) {
-        try {
-          final guide = await widget.client.load(
-            '$forumOrigin/forum.php?mod=guide&view=newthread',
-          );
-          final details = {for (final item in guide.links) item.url: item};
-          if (mounted && generation == revision) {
-            setState(
-              () => latest = data.latest
-                  .map((item) => details[item.url] ?? item)
-                  .toList(),
-            );
-          }
-        } catch (_) {
-          // Homepage tooltip metadata remains usable when the guide is unavailable.
+      try {
+        final guide = await widget.client.load(
+          '$forumOrigin/forum.php?mod=guide&view=newthread',
+        );
+        if (mounted && generation == revision) {
+          setState(() {
+            if (guide.links.isNotEmpty) latest = guide.links;
+            latestPages.clear();
+            latestPages.add('$forumOrigin/forum.php?mod=guide&view=newthread');
+            latestNext = guide.next;
+          });
+        }
+      } catch (_) {
+        if (mounted && feed == feedRevision) {
+          setState(() {
+            latestNext = '$forumOrigin/forum.php?mod=guide&view=newthread';
+            latestError = '最新帖子导读加载失败，已保留现有内容';
+          });
         }
       }
     } catch (e) {
@@ -193,6 +213,43 @@ class _HomePageState extends State<HomePage> {
       }
     } finally {
       if (mounted && generation == revision) setState(() => loading = false);
+    }
+  }
+
+  Future<void> loadLatest() async {
+    final target = latestNext;
+    if (loading ||
+        latestLoading ||
+        target == null ||
+        latestPages.contains(target)) {
+      return;
+    }
+    final generation = revision, feed = feedRevision;
+    setState(() {
+      latestLoading = true;
+      latestError = null;
+    });
+    try {
+      final data = await widget.client.load(target);
+      if (!mounted || generation != revision || feed != feedRevision) return;
+      setState(() {
+        final items = [...?latest];
+        final seen = items.map((item) => item.url).toSet();
+        final added = data.links.where((item) => seen.add(item.url)).toList();
+        latest = [...items, ...added];
+        latestPages.add(target);
+        latestNext = added.isEmpty || latestPages.contains(data.next)
+            ? null
+            : data.next;
+      });
+    } catch (e) {
+      if (mounted && generation == revision && feed == feedRevision) {
+        setState(() => latestError = e.toString());
+      }
+    } finally {
+      if (mounted && generation == revision && feed == feedRevision) {
+        setState(() => latestLoading = false);
+      }
     }
   }
 
@@ -536,158 +593,217 @@ class _HomePageState extends State<HomePage> {
         ),
       );
 
-  Widget home() => RefreshIndicator(
-    onRefresh: refresh,
-    edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight,
-    child: ListView(
-      controller: scroll,
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(
-        10,
-        MediaQuery.paddingOf(context).top + kToolbarHeight + 6,
-        10,
-        bottomContentPadding(context),
-      ),
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) => Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final item in <(String, IconData, VoidCallback)>[
-                (
-                  '签到',
-                  Icons.event_available_outlined,
-                  () => openSite('签到', 'k_misign-sign.html'),
-                ),
-                ('精华', Icons.star_outline_rounded, () => guide('精华', 'digest')),
-                (
-                  '版规',
-                  Icons.gavel_outlined,
-                  () => browse(
-                    const ForumLink(
-                      'MT论坛总版规',
-                      '$forumOrigin/thread-85763-1-1.html',
-                    ),
-                  ),
-                ),
-                (
-                  '手册',
-                  Icons.menu_book_outlined,
-                  () =>
-                      openExternal(context, Uri.parse('https://mt.cc/guide/')),
-                ),
-              ])
-                SizedBox(
-                  width: (constraints.maxWidth - 24) / 4,
-                  child: AppSectionCard(
-                    borderRadius: 12,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: item.$3,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 20,
-                          horizontal: 2,
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              item.$2,
-                              size: 24,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              item.$1,
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.labelMedium,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+  Widget home() => ScrollConfiguration(
+    behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+    child: RefreshIndicator(
+      onRefresh: refresh,
+      edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight,
+      child: ListView.builder(
+        controller: scroll,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: ClampingScrollPhysics(),
         ),
-        const SizedBox(height: 8),
-        AppSectionCard(
-          borderRadius: 12,
-          child: Column(
-            children: [
-              ListTile(
-                dense: true,
-                minTileHeight: 48,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                title: Text(
-                  '板块',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                trailing: Icon(
-                  expanded ? Icons.expand_less : Icons.expand_more,
-                ),
-                onTap: () => setState(() => expanded = !expanded),
-              ),
-              if (expanded)
+        padding: EdgeInsets.fromLTRB(
+          10,
+          MediaQuery.paddingOf(context).top + kToolbarHeight + 6,
+          10,
+          bottomContentPadding(context),
+        ),
+        itemCount: (latest ?? document?.latest ?? []).length + 2,
+        itemBuilder: (context, index) {
+          final items = latest ?? document?.latest ?? <ForumLink>[];
+          if (index == 0) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                 LayoutBuilder(
-                  builder: (context, constraints) {
-                    final columns = constraints.maxWidth > 650
-                        ? 6
-                        : (MediaQuery.textScalerOf(context).scale(14) > 22
-                              ? 3
-                              : 4);
-                    return Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                      child: Wrap(
-                        children: [
-                          for (final b in boards)
-                            SizedBox(
-                              width: (constraints.maxWidth - 16) / columns,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () => browse(
-                                  ForumLink(
-                                    b.$1,
-                                    '$forumOrigin/forum-${b.$2}-1.html',
-                                  ),
+                  builder: (context, constraints) => Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final item in <(String, IconData, VoidCallback)>[
+                        (
+                          '签到',
+                          Icons.event_available_outlined,
+                          () => openSite('签到', 'k_misign-sign.html'),
+                        ),
+                        (
+                          '精华',
+                          Icons.star_outline_rounded,
+                          () => guide('精华', 'digest'),
+                        ),
+                        (
+                          '版规',
+                          Icons.gavel_outlined,
+                          () => browse(
+                            const ForumLink(
+                              'MT论坛总版规',
+                              '$forumOrigin/thread-85763-1-1.html',
+                            ),
+                          ),
+                        ),
+                        (
+                          '手册',
+                          Icons.menu_book_outlined,
+                          () => openExternal(
+                            context,
+                            Uri.parse('https://mt.cc/guide/'),
+                          ),
+                        ),
+                      ])
+                        SizedBox(
+                          width: (constraints.maxWidth - 24) / 4,
+                          child: AppSectionCard(
+                            borderRadius: 12,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: item.$3,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 20,
+                                  horizontal: 2,
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 4,
-                                    horizontal: 2,
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      boardAvatar(b),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        b.$1,
-                                        textAlign: TextAlign.center,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelMedium,
-                                      ),
-                                    ],
-                                  ),
+                                child: Column(
+                                  children: [
+                                    Icon(
+                                      item.$2,
+                                      size: 24,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      item.$1,
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                        ],
-                      ),
-                    );
-                  },
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        if (error != null) FailurePanel(message: error!, retry: refresh),
-        threadSection('排行榜', document?.hot ?? [], 'hot'),
-        const SizedBox(height: 8),
-        threadSection('最新帖子', latest ?? document?.latest ?? [], 'newthread'),
-      ],
+                const SizedBox(height: 8),
+                AppSectionCard(
+                  borderRadius: 12,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        dense: true,
+                        minTileHeight: 48,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                        ),
+                        title: Text(
+                          '板块',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        trailing: Icon(
+                          expanded ? Icons.expand_less : Icons.expand_more,
+                        ),
+                        onTap: () => setState(() => expanded = !expanded),
+                      ),
+                      if (expanded)
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final columns = constraints.maxWidth > 650
+                                ? 6
+                                : (MediaQuery.textScalerOf(context).scale(14) >
+                                          22
+                                      ? 3
+                                      : 4);
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                              child: Wrap(
+                                children: [
+                                  for (final b in boards)
+                                    SizedBox(
+                                      width:
+                                          (constraints.maxWidth - 16) / columns,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(12),
+                                        onTap: () => browse(
+                                          ForumLink(
+                                            b.$1,
+                                            '$forumOrigin/forum-${b.$2}-1.html',
+                                          ),
+                                        ),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 4,
+                                            horizontal: 2,
+                                          ),
+                                          child: Column(
+                                            children: [
+                                              boardAvatar(b),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                b.$1,
+                                                textAlign: TextAlign.center,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .labelMedium,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (error != null)
+                  FailurePanel(message: error!, retry: refresh),
+                threadSection('排行榜', document?.hot ?? [], 'hot'),
+                const SizedBox(height: 8),
+                sectionTitle('最新帖子', more: () => guide('最新帖子', 'newthread')),
+              ],
+            );
+          }
+          if (index <= items.length) {
+            final item = items[index - 1];
+            return ThreadTile(
+              key: ValueKey('$revision:${item.url}'),
+              link: item,
+              loadSummary: (active) {
+                final generation = revision;
+                return widget.client.threadSummary(
+                  item.url,
+                  () => active() && mounted && generation == revision,
+                );
+              },
+              onTap: () => browse(item),
+            );
+          }
+          return ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 64),
+            child: latestLoading || (loading && items.isEmpty)
+                ? const Center(child: CircularProgressIndicator())
+                : latestError != null
+                ? FailurePanel(message: latestError!, retry: loadLatest)
+                : Center(
+                    child: latestNext != null
+                        ? TextButton(
+                            onPressed: loadLatest,
+                            child: const Text('加载更多帖子'),
+                          )
+                        : Text(items.isEmpty ? '暂时没有内容' : '已经到底了'),
+                  ),
+          );
+        },
+      ),
     ),
   );
 

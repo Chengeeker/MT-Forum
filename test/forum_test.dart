@@ -56,6 +56,24 @@ class SummaryAdapter implements HttpClientAdapter {
 }
 
 void main() {
+  test('搜索结果解析作者头像、摘要、统计和官方下一页', () {
+    final data = parseForum(
+      File('test/fixtures/search.html').readAsStringSync(),
+      forumUri('search.php?mod=forum&searchid=123'),
+    );
+    final item = data.links.single;
+    expect(item.title, '原生搜索结果');
+    expect(item.author, '搜索作者');
+    expect(item.imageUrl, contains('21_avatar_middle.jpg'));
+    expect(item.excerpt, contains('deepseek'));
+    expect(item.views, '3668');
+    expect(item.replies, '495');
+    expect(item.date, '2026-10-19 22:18');
+    expect(
+      data.next,
+      forumUri('search.php?mod=forum&searchid=123&page=2').toString(),
+    );
+  });
   test('通知帖子跳转识别 ptid 和仅 pid，并限制同源', () {
     final ptid = forumUri(
       'forum.php?mod=redirect&goto=findpost&pid=901&ptid=123',
