@@ -1,0 +1,35 @@
+name: mt_forum
+description: MT论坛 Material 3 Android 客户端
+publish_to: none
+version: 1.5.5+20
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  dio: ^5.11.0
+  html: ^0.15.7
+  shared_preferences: ^2.5.5
+  dynamic_color: ^1.9.0
+  webview_flutter: ^4.14.1
+  webview_flutter_android: ^4.14.1
+  url_launcher: ^6.3.2
+  extended_image: ^8.2.1
+  video_player: ^2.9.2
+  flutter_widget_from_html_core: ^0.17.0
+  liquid_glass_widgets:
+    path: packages/liquid_glass_widgets
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/forum-default-avatar.gif
+    - assets/forum-login.js
+    - assets/review-license.txt
+    - assets/liquid-glass-license.txt
+    - assets/liquid-glass-third-party-notices.txt
