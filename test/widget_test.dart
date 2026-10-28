@@ -14,6 +14,8 @@ import 'package:mt_forum/pages/login_page.dart';
 import 'package:mt_forum/pages/web_page.dart';
 import 'package:mt_forum/pages/forum_page.dart';
 import 'package:mt_forum/pages/native_forum_page.dart';
+import 'package:mt_forum/pages/home_page.dart';
+import 'package:mt_forum/core/utils/haptic_feedback_util.dart';
 import 'package:mt_forum/core/widgets/forum_avatar.dart';
 import 'package:mt_forum/core/design_system/components/review_frosted_app_bar.dart';
 
@@ -194,6 +196,77 @@ void main() {
   Future<Preferences> prefs() async {
     SharedPreferences.setMockInitialValues({});
     return Preferences(await SharedPreferences.getInstance());
+  }
+
+  for (final enabled in [true, false]) {
+    testWidgets('发现搜索图标、文字、空白与编辑搜索栏触感一致 enabled=$enabled', (tester) async {
+      final calls = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'HapticFeedback.vibrate') calls.add(call);
+          return null;
+        },
+      );
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        );
+        HapticFeedbackUtil.isEnabled = true;
+        HapticFeedbackUtil.resetForTesting();
+      });
+      final settings = await prefs();
+      settings.haptics = enabled;
+      await settings.save();
+      await tester.pumpWidget(
+        MtForumApp(
+          preferences: settings,
+          client: FakeClient(),
+          useBrowserReader: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('发现').last);
+      await tester.pumpAndSettle();
+      expect(find.text('精华内容'), findsOneWidget);
+      expect(find.text('精华采撷'), findsNothing);
+      for (final target in ['icon', 'text', 'blank']) {
+        final bar = find.byType(SearchBar);
+        final icon = find.descendant(
+          of: bar,
+          matching: find.byIcon(Icons.search),
+        );
+        expect(
+          tester.getRect(icon).left - tester.getRect(bar).left,
+          closeTo(16, 1),
+        );
+        calls.clear();
+        HapticFeedbackUtil.resetForTesting();
+        if (target == 'icon') {
+          await tester.tap(icon);
+        } else if (target == 'text') {
+          await tester.tapAt(
+            tester.getTopLeft(find.byType(TextField)) + const Offset(20, 12),
+          );
+        } else {
+          await tester.tapAt(
+            tester.getRect(bar).centerRight - const Offset(24, 0),
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(SearchPage), findsOneWidget);
+        expect(calls, hasLength(enabled ? 1 : 0));
+        calls.clear();
+        HapticFeedbackUtil.resetForTesting();
+        await tester.tap(find.byType(TextField));
+        await tester.pump();
+        expect(calls, hasLength(enabled ? 1 : 0));
+        Navigator.of(tester.element(find.byType(SearchPage))).pop();
+        await tester.pumpAndSettle();
+      }
+      expect(tester.takeException(), isNull);
+    });
   }
 
   testWidgets('首页最新惰性分页、合并去重，末页重复上拉不重复请求', (tester) async {

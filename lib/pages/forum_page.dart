@@ -8,6 +8,7 @@ import 'package:html/dom.dart' as dom;
 import '../core/design_system/components/review_frosted_app_bar.dart';
 import '../core/widgets/app_section_card.dart';
 import '../core/widgets/forum_avatar.dart';
+import '../core/utils/haptic_feedback_util.dart';
 import '../data/forum.dart';
 import '../data/preferences.dart';
 import '../data/native_forum.dart';
@@ -616,15 +617,18 @@ class _ForumPageState extends State<ForumPage> {
         .toDouble();
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => ForumImageGalleryPage(
-            images: post.images,
-            initialIndex: index,
-            heroTagPrefix: heroTagPrefix,
+      onTap: () {
+        HapticFeedbackUtil.light();
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ForumImageGalleryPage(
+              images: post.images,
+              initialIndex: index,
+              heroTagPrefix: heroTagPrefix,
+            ),
           ),
-        ),
-      ),
+        );
+      },
       child: Hero(
         tag: '$heroTagPrefix:$index',
         child: ConstrainedBox(
@@ -734,6 +738,7 @@ class _ForumPageState extends State<ForumPage> {
                     textStyle: Theme.of(context).textTheme.bodyLarge
                         ?.copyWith(height: 1.65),
                     onTapUrl: (href) async {
+                      HapticFeedbackUtil.light();
                       final uri = forumUri(href);
                       if (isDirectVideoUri(uri)) {
                         await Navigator.of(context).push(

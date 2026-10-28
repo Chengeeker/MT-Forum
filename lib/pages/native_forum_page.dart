@@ -6,6 +6,7 @@ import 'package:html/parser.dart' as html;
 import '../core/design_system/components/review_frosted_app_bar.dart';
 import '../core/widgets/app_section_card.dart';
 import '../core/widgets/forum_avatar.dart';
+import '../core/utils/haptic_feedback_util.dart';
 import '../data/forum.dart';
 import '../data/native_forum.dart';
 import '../data/preferences.dart';
@@ -205,6 +206,17 @@ class NativeForumPageState extends State<NativeForumPage> {
     final uri = (document?.uri ?? widget.uri).resolve(href);
     if (!isForumUri(uri)) {
       if (mounted) await openExternal(context, uri);
+      return;
+    }
+    if (document?.ranking != null &&
+        uri.path == '/misc.php' &&
+        uri.queryParameters['mod'] == 'ranklist') {
+      if (loading || submitting) return;
+      FocusScope.of(context).unfocus();
+      setState(() => currentUri = uri);
+      await load();
+      await WidgetsBinding.instance.endOfFrame;
+      if (mounted && scroll.hasClients && error == null) scroll.jumpTo(0);
       return;
     }
     if (!widget.embedded &&
@@ -651,6 +663,7 @@ class NativeForumPageState extends State<NativeForumPage> {
     baseUrl: document!.uri,
     textStyle: Theme.of(context).textTheme.bodyMedium,
     onTapUrl: (href) async {
+      HapticFeedbackUtil.light();
       await openLink(href);
       return true;
     },
@@ -759,6 +772,190 @@ class NativeForumPageState extends State<NativeForumPage> {
     } finally {
       if (mounted) setState(() => submitting = false);
     }
+  }
+
+  PreferredSizeWidget? rankingTabs() {
+    final ranking = document?.ranking;
+    if (ranking == null) return null;
+    final rows = [
+      ranking.categories,
+      ranking.filters,
+    ].where((row) => row.isNotEmpty).toList();
+    return PreferredSize(
+      preferredSize: Size.fromHeight(privacyTabHeight * rows.length),
+      child: Column(
+        children: [
+          for (final row in rows)
+            DefaultTabController(
+              key: ValueKey('${document!.uri}:${row.first.url}'),
+              length: row.length,
+              initialIndex: row
+                  .indexWhere((tab) => tab.selected)
+                  .clamp(0, row.length - 1),
+              child: SizedBox(
+                height: privacyTabHeight,
+                child: Builder(
+                  builder: (context) => TabBar(
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    tabs: [for (final tab in row) Tab(text: tab.label)],
+                    onTap: (index) {
+                      DefaultTabController.of(context).index = row
+                          .indexWhere((tab) => tab.selected)
+                          .clamp(0, row.length - 1);
+                      if (!row[index].selected) openLink(row[index].url);
+                    },
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget rankingList() {
+    final data = document!.ranking!;
+    return ListView.builder(
+      key: ValueKey(document!.uri),
+      controller: scroll,
+      padding: const EdgeInsets.all(16),
+      itemCount: data.entries.length + 2,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (loading) const LinearProgressIndicator(),
+              if (error != null)
+                Text(
+                  error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              if (data.periods.isNotEmpty)
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final period in data.periods)
+                      ChoiceChip(
+                        label: Text(period.label),
+                        selected: period.selected,
+                        onSelected: loading
+                            ? null
+                            : (_) => openLink(period.url),
+                      ),
+                  ],
+                ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12, top: 4),
+                child: Text(
+                  data.title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              if (data.entries.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('没有可显示的排行数据'),
+                ),
+            ],
+          );
+        }
+        if (index > data.entries.length) {
+          return data.more == null
+              ? const SizedBox(height: 16)
+              : TextButton(
+                  onPressed: loading ? null : () => openLink(data.more!.url),
+                  child: Text(data.more!.title),
+                );
+        }
+        final (rank, link) = data.entries[index - 1];
+        final theme = Theme.of(context);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: AppSectionCard(
+            borderRadius: 12,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => openLink(link.url, link.title),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Semantics(
+                      label: '第$rank名',
+                      excludeSemantics: true,
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: rank <= 3
+                              ? theme.colorScheme.primaryContainer
+                              : theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$rank',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: rank <= 3
+                                ? theme.colorScheme.onPrimaryContainer
+                                : theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            link.title,
+                        maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          if (link.author.isNotEmpty || link.imageUrl != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Row(
+                                children: [
+                                  ForumAvatar(url: link.imageUrl, radius: 12),
+                                  if (link.author.isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        link.author,
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          if (link.subtitle.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                link.subtitle,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget favoritesView() {
@@ -891,8 +1088,10 @@ class NativeForumPageState extends State<NativeForumPage> {
                 ? null
                 : ReviewFrostedAppBar(
                     title: Text(widget.title),
-                    bottom:
-                        isPrivacy && (document?.privacyTabs.isNotEmpty ?? false)
+                    bottom: document?.ranking != null
+                        ? rankingTabs()
+                        : isPrivacy &&
+                              (document?.privacyTabs.isNotEmpty ?? false)
                         ? PreferredSize(
                             preferredSize: Size.fromHeight(privacyTabHeight),
                             child: DefaultTabController(
@@ -954,54 +1153,60 @@ class NativeForumPageState extends State<NativeForumPage> {
             body: SafeArea(
               top: !widget.embedded,
               bottom: !widget.embedded,
-              child: ListView(
-                controller: scroll,
-                padding: widget.contentPadding ?? const EdgeInsets.all(16),
-                children: [
-                  if (loading || submitting) const LinearProgressIndicator(),
-                  if (error != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Text(
-                        error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
+              child: document?.ranking != null
+                  ? rankingList()
+                  : ListView(
+                      controller: scroll,
+                      padding:
+                          widget.contentPadding ?? const EdgeInsets.all(16),
+                      children: [
+                        if (loading || submitting)
+                          const LinearProgressIndicator(),
+                        if (error != null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Text(
+                              error!,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                          ),
+                        if (document == null && !loading)
+                          FilledButton.tonal(
+                            onPressed: sessionExpired
+                                ? () async {
+                                    if (await showForumLogin(
+                                          context,
+                                          widget.client,
+                                          force: true,
+                                        ) &&
+                                        mounted) {
+                                      await load();
+                                    }
+                                  }
+                                : load,
+                            child: Text(sessionExpired ? '重新登录' : '重试'),
+                          ),
+                        if (document != null)
+                          if (isFavorites)
+                            favoritesView()
+                          else if (document!.signIn != null)
+                            ForumSignInView(
+                              data: document!.signIn!,
+                              busy: loading || submitting,
+                              onSignIn: document!.signAction == null
+                                  ? null
+                                  : signIn,
+                              onLink: openLink,
+                              ranking: document!.signIn!.ranks == null
+                                  ? null
+                                  : contentView(document!.signIn!.ranks!),
+                            )
+                          else
+                            contentView(document!.content),
+                      ],
                     ),
-                  if (document == null && !loading)
-                    FilledButton.tonal(
-                      onPressed: sessionExpired
-                          ? () async {
-                              if (await showForumLogin(
-                                    context,
-                                    widget.client,
-                                    force: true,
-                                  ) &&
-                                  mounted) {
-                                await load();
-                              }
-                            }
-                          : load,
-                      child: Text(sessionExpired ? '重新登录' : '重试'),
-                    ),
-                  if (document != null)
-                    if (isFavorites)
-                      favoritesView()
-                    else if (document!.signIn != null)
-                      ForumSignInView(
-                        data: document!.signIn!,
-                        busy: loading || submitting,
-                        onSignIn: document!.signAction == null ? null : signIn,
-                        onLink: openLink,
-                        ranking: document!.signIn!.ranks == null
-                            ? null
-                            : contentView(document!.signIn!.ranks!),
-                      )
-                    else
-                      contentView(document!.content),
-                ],
-              ),
             ),
           ),
         );

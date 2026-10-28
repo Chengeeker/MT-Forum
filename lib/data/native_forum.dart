@@ -288,6 +288,98 @@ class ForumMessageTab {
   final bool selected;
 }
 
+class ForumRanking {
+  ForumRanking(Document document, Uri uri) {
+    String clean(String value) => value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    List<ForumMessageTab> tabs(Element? root) => [
+      for (final a in root?.querySelectorAll('a[href]') ?? <Element>[])
+        if (isForumUri(uri.resolve(a.attributes['href']!)) &&
+            uri.resolve(a.attributes['href']!).queryParameters['mod'] ==
+                'ranklist')
+          ForumMessageTab(
+            label: clean(a.text),
+            url: uri.resolve(a.attributes['href']!).toString(),
+            selected:
+                a.classes.contains('a') ||
+                a.parent?.classes.contains('a') == true,
+          ),
+    ];
+    categories = tabs(document.querySelector('.ct2_a .tbn ul'));
+    filters = tabs(document.querySelector('.ct2_a .mn .tb'));
+    periods = tabs(document.querySelector('.ct2_a .mn .tbmu'));
+    final root = document.querySelector('.ct2_a .mn');
+    title = clean(
+      root?.querySelector('h1.mt,.bm_h h2')?.text ??
+          '${categories.where((tab) => tab.selected).firstOrNull?.label ?? ''}排行',
+    );
+    final moreAnchor = root?.querySelector('.bm_h a[href]');
+    if (moreAnchor != null) {
+      final target = uri.resolve(moreAnchor.attributes['href']!);
+      if (isForumUri(target) && target.queryParameters['mod'] == 'ranklist') {
+        more = ForumLink('完整帖子排行', target.toString());
+      }
+    }
+    final rows =
+        root?.querySelectorAll('.tl tr,.hasrank dl,.bm_c .xl > li') ??
+        <Element>[];
+    final seen = <String>{};
+    final metric = clean(
+      root?.querySelector('.tl tr')?.children.lastOrNull?.text ?? '',
+    );
+    for (final (index, row) in rows.indexed) {
+      final anchor =
+          row.querySelector('th a[href],dt:not(.y) a[href]') ??
+          row
+              .querySelectorAll('a[href]')
+              .where(
+                (a) => threadId(uri.resolve(a.attributes['href']!)) != null,
+              )
+              .firstOrNull;
+      if (anchor == null) continue;
+      final target = uri.resolve(anchor.attributes['href']!);
+      if (!isForumUri(target) || !seen.add(target.toString())) continue;
+      final rankNode = row.querySelector('.icn,.ranknum');
+      final rank =
+          int.tryParse(
+            rankNode?.querySelector('img')?.attributes['alt'] ??
+                clean(rankNode?.text ?? ''),
+          ) ??
+          (row.localName == 'li' ? index + 1 : null);
+      if (rank == null || rank < 1) continue;
+      final author = row.querySelector('em a[href],.by cite a[href]');
+      final stat = row.localName == 'tr'
+          ? clean(row.children.last.text)
+          : row.localName == 'dl'
+          ? clean(row.querySelector('dd:not(.ranknum):not(.m)')?.text ?? '')
+          : '';
+      final image = row.querySelector('.avt img')?.attributes['src'];
+      final imageUri = image == null ? null : uri.resolve(image);
+      entries.add((
+        rank,
+        ForumLink(
+          clean(anchor.text),
+          target.toString(),
+          author: clean(author?.text ?? ''),
+          imageUrl:
+              imageUri != null &&
+                  imageUri.scheme == 'https' &&
+                  (isForumUri(imageUri) || imageUri.host == 'cdn.binmt.cc')
+              ? imageUri.toString()
+              : authorAvatar(author?.attributes['href'], uri),
+          subtitle: [
+            clean(row.querySelector('.frm')?.text ?? ''),
+            if (stat.isNotEmpty) row.localName == 'tr' ? '$metric $stat' : stat,
+          ].where((value) => value.isNotEmpty).join(' · '),
+        ),
+      ));
+    }
+  }
+  late final String title;
+  late final List<ForumMessageTab> categories, filters, periods;
+  final entries = <(int, ForumLink)>[];
+  ForumLink? more;
+}
+
 class NativeForumDocument {
   NativeForumDocument(
     this.source,
@@ -295,6 +387,9 @@ class NativeForumDocument {
     this.extractMessageTabs = false,
   }) {
     final document = html.parse(source);
+    if (uri.path == '/misc.php' && uri.queryParameters['mod'] == 'ranklist') {
+      ranking = ForumRanking(document, uri);
+    }
     requiresLogin = document.querySelector('form[id^="loginform_"]') != null;
     title =
         document.querySelector('h1')?.text.trim() ??
@@ -491,6 +586,7 @@ class NativeForumDocument {
   late final List<ForumLink> links;
   Uri? signAction;
   ForumSignIn? signIn;
+  ForumRanking? ranking;
 
   List<ForumMessageTab> _privacyTabs(Document document) {
     if (uri.queryParameters['mod'] != 'spacecp' ||

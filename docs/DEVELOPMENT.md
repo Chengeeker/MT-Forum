@@ -1,6 +1,6 @@
 # MT论坛开发文档
 
-更新：2026-10-28。当前版本：1.0.0+21。主文档同步至 `D:\App\开发文档\MT论坛.md`。
+更新：2026-10-28。当前版本：1.0.0+24。主文档同步至 `D:\App\开发文档\MT论坛.md`。
 
 ## 用户要求与边界
 - Android 包名 `bbs.binmt.cc`，应用名 MT论坛，仅 ARM64-v8a。
@@ -366,3 +366,29 @@
 - 必要检查：6 项搜索/首页专项测试通过，包含延迟搜索期间不显示首页、搜索字段/令牌/原生卡片、分页去重及反复触底不重复请求、导读失败回退；dart analyze lib test 无问题。日志 build/search-feed-tests.log、build/search-feed-analyze.log。未扩大到全套回归，未安装设备或执行账号写操作。
 - 版本名沿用用户指定的 1.0.0；versionCode 增至 21。GitHub main 已有初始源码及版本名回退提交（4dffb5508d76c2114b8dd58188b8c2390de3ef77）；项目根目录没有 .git，推送检出位于 build/github-push-checkout，不上传 APK、签名文件或构建缓存。
 - 正式包：MT论坛_v1.0.0_arm64.apk，25,086,088 字节，SHA-256 5e3e4fcede409da31f5a0a8a0d1c92d5ff63348c90d273b505618d244177b8d8。构建成功，aapt 确认 1.0.0+21 / bbs.binmt.cc，ZIP 仅 ARM64-v8a；既有签名证书、原图标资源哈希、16KB 对齐以及 190 个生产源码/资源文件与编译目录一致性核验通过。核验清单 build/release-verification.json；code20 的同名 APK 已存 build/rollback/MT论坛_v1.0.0_code20_arm64.apk，避免与早期 1.0.0 回退包混淆。
+
+## 2026-10-28 发现搜索对齐、触感与文案（1.0.0+22）
+- 发现页只读 SearchBar 的 leading 增加 8dp 起始内边距，搜索图标和文字同步右移，图标起始位置与下方列表图标对齐；不改变整条搜索栏触摸范围。
+- SearchBar 内部输入框消费文字区域点击，无法触发全局 HapticSplashFactory；图标/外层点击则能触发，因此此前存在触感不一致。只读搜索入口及编辑搜索栏显式调用同一 light 反馈，保留现有 splash 去重与触感总开关；键盘提交也与搜索按钮一致。
+- 排查非 Material 点击入口，补齐帖子图片 GestureDetector 和两处 HTML 正文链接的同一反馈。不在文本输入或图片缩放/拖拽过程中增加连续震动，不另设反馈开关。
+- “精华采撷”是原始中文文案，并非乱码；按用户要求改为“精华内容”。对 lib 和资产 JS 共 23 个文件严格 UTF-8 解码并检查替换字符与常见乱码模式，未发现其他本地 UI 编码问题；网站动态内容不在此静态检查保证范围内。
+- 3 项必要专项测试通过：搜索图标/文字/空白和编辑栏启用时各一次反馈、关闭时均无反馈、搜索图标位置及精华文案、底栏原有胶囊动效；dart analyze lib test 无问题。日志 build/discover-haptics-tests.log、build/discover-haptics-analyze.log。平台触感调用已检查，未作实际手机马达或视觉验收。
+- 版本名保持 1.0.0，versionCode 增至 22；本轮未要求再次推送 GitHub，源码和文档先保存在本机。旧 code21 同名包保留至 build/rollback/MT论坛_v1.0.0_code21_arm64.apk。
+- 正式包 MT论坛_v1.0.0_arm64.apk：25086084 字节，SHA-256 d0471c970d12520c6afc962bd09214e09c64f66b846f812a3df6bcebd90d7359；aapt 确认 bbs.binmt.cc / 1.0.0+22，单 ARM64-v8a、原签名证书、原图标哈希与 16KB 对齐核验通过，190 个生产源码/资源文件与编译目录一致。构建日志 build/discover-haptics-build.log，核验清单 build/release-verification.json；仍未安装到真机。
+
+## 2026-10-28 排行榜专用原生卡片（1.0.0+23）
+- 用户截图证实排行榜仍由通用 HTML 渲染：作者/标题重复成为正文和按钮，缺少名次且留白过大。排行榜改为专用 ForumRanking 模型与惰性原生卡片列表，不经过 HtmlWidget、通用消息卡片或网页数据表格适配器。
+- 已匿名只读核对官网 misc.php?mod=ranklist 的总览、type=thread&view=replies&orderby=thismonth、type=member、type=forum&view=threads 四份实际响应。总览按官网列表顺序显示名次；具体榜单读取数字及前三名图片 alt，不能只读 .icn 文本。非总览缺失合法名次的行不猜排名。帖子行展示一次标题、作者头像/昵称及官网统计，用户/版块排行使用同样的紧凑卡片。
+- 从当前响应提取全部/用户/帖子/版块顶栏，以及对应次级榜单；时间范围使用正文原生选择控件。更多、分类、统计口径和时间切换都在同一页面更新，磨砂分界位于末级顶栏下方，保留官网同源链接和顺序，不额外逐帖抓取摘要。
+- 注意实际官网帖子/版块排行 .ct2_a 缺少 id=ct，解析应使用 .ct2_a .mn；不能只依赖 #ct。总览 .xl li、详情 .tl tr 和用户 .hasrank dl 是三种不同结构。
+- 必要检查：四份官网主体响应移除脚本/事件后作为公开 fixture；6 项解析/Widget 检查通过，覆盖图片名次、唯一内容、作者与统计、分类、360dp 普通/双倍字号、更多原位切换和顶栏高度。曾发现旧的“更多”按钮焦点在懒列表复用后触发自动滚动，现按响应 URI 更新列表 key、切换前清理旧焦点，并在新布局完成后回到顶部。dart analyze lib test 无问题。日志 build/ranking-tests.log、build/ranking-analyze.log。
+- 版本名保持 1.0.0，versionCode 增至 23；未在真机验收，未提交论坛写操作，本轮未要求推送 GitHub。旧 code22 包与签名/核验记录归档 build/rollback。
+- 正式包 MT论坛_v1.0.0_arm64.apk：25086084 字节，SHA-256 1b579f4addd4b0d4b7d72d7d153c8a04c121d4044dc9467a139cba3343b7f62c；aapt 确认 bbs.binmt.cc / 1.0.0+23，单 ARM64-v8a、原签名证书、原图标哈希与 16KB 对齐核验通过，190 个生产源码/资源文件及 pubspec 与编译目录一致。构建日志 build/ranking-build.log，核验清单 build/release-verification.json；未安装真机。
+
+## 2026-10-28 首页帖子批量列表滑动性能（1.0.0+24）
+- 根因：发现页“最新发表”直接使用导读列表数据；首页每个 `ThreadTile` 则在进入列表时调用一次 `threadSummary`（每次返回再触发卡片重绘），并且冷启动先显示首页少量预览、随后再替换成导读页。两条路径看起来相似，首页实际多出逐帖 HTTP 请求和一轮列表替换。
+- 首页冷启动现在先读取官方“最新发表”导读结果，若首批不足 20 条且有下一页，则继续读取到约 20 条后一次性展示；首页区块返回的少量帖子只作为导读请求失败时的回退。刷新过程中保留已有列表。
+- 首页最新列表与发现页一样只使用导读响应携带的数据，不在卡片滚入视口时逐篇请求摘要或令每张卡片异步更新；列表继续惰性构建。首批到约 20 条后，滚动到末尾前 600dp 时再取下一页，保留 URL 去重、重复分页保护和失败重试。
+- 导读列表没有提供摘要、用户组或点赞数时不再额外请求每篇帖子补齐，因此这些字段按服务端列表实际返回值展示；保留列表提供的标题、作者、头像、日期及浏览/回复数。若以后要保留逐帖摘要，需先有官方批量接口或缓存策略，避免恢复逐条网络请求。
+- 版本名保持 1.0.0，versionCode 增至 24。必要检查为 Dart 静态分析、ARM64 release 构建及包身份/ABI/签名/16KB 对齐核验；本轮不运行额外 Flutter 测试，未安装真机。
+- 最终 ARM64 正式包：`MT论坛_v1.0.0_arm64.apk`，25,086,084 字节，SHA-256 `b16b98b528bbc2cc8fdb50cda2dcabf80a3a8f27e8047384cf0e110a363219e6`；aapt 确认 `bbs.binmt.cc` / `1.0.0+24` / 应用名 MT论坛，仅 arm64-v8a。原签名证书、原图标资源 SHA-256 `6cc19ee2603f723038dc8771b389f86da56ce0791ae1af765c754c2adc4044a1`、16KB zipalign 均通过；193 个生产源码/资源/配置文件与编译快照逐项哈希一致。记录见 `build/release-verification.json`、`build/final-apk-signature.txt`，构建与分析日志为 `build/home-feed-batch-build.log`、`build/home-feed-batch-analyze.log`。code23 APK 已保存在 rollback；未安装真机。

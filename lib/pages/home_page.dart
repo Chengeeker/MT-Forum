@@ -32,6 +32,7 @@ const boards = <(String, String, IconData)>[
   ('申诉举报', '53', Icons.shield_outlined),
   ('站务专区', '92', Icons.admin_panel_settings_outlined),
 ];
+const latestInitialBatchSize = 20;
 
 const messageSections = <(String, String)>[
   ('消息', 'home.php?mod=space&do=pm'),
@@ -185,23 +186,57 @@ class _HomePageState extends State<HomePage> {
       if (!mounted || generation != revision) return;
       setState(() {
         document = data;
-        latest ??= data.latest;
       });
       try {
         final guide = await widget.client.load(
           '$forumOrigin/forum.php?mod=guide&view=newthread',
         );
         if (mounted && generation == revision) {
+          const guideUrl = '$forumOrigin/forum.php?mod=guide&view=newthread';
+          final batchPages = <String>{guideUrl};
+          final batchItems = [...guide.links];
+          final seenItems = batchItems.map((item) => item.url).toSet();
+          var batchNext = guide.next;
+          String? batchError;
+          while (batchItems.length < latestInitialBatchSize &&
+              batchNext != null &&
+              !batchPages.contains(batchNext)) {
+            final target = batchNext;
+            try {
+              final page = await widget.client.load(target);
+              if (!mounted || generation != revision || feed != feedRevision) {
+                return;
+              }
+              batchPages.add(target);
+              final added = page.links
+                  .where((item) => seenItems.add(item.url))
+                  .toList();
+              batchItems.addAll(added);
+              batchNext = added.isEmpty || batchPages.contains(page.next)
+                  ? null
+                  : page.next;
+            } catch (e) {
+              batchError = e.toString();
+              break;
+            }
+          }
+          if (batchNext != null && batchPages.contains(batchNext)) {
+            batchNext = null;
+          }
           setState(() {
-            if (guide.links.isNotEmpty) latest = guide.links;
+            if (batchItems.isNotEmpty) latest = batchItems;
+            latest ??= data.latest;
             latestPages.clear();
-            latestPages.add('$forumOrigin/forum.php?mod=guide&view=newthread');
-            latestNext = guide.next;
+            latestPages.addAll(batchPages);
+            latestNext = batchNext;
+            latestError = batchError;
           });
         }
       } catch (_) {
         if (mounted && feed == feedRevision) {
           setState(() {
+            latest ??= data.latest;
+            latestPages.clear();
             latestNext = '$forumOrigin/forum.php?mod=guide&view=newthread';
             latestError = '最新帖子导读加载失败，已保留现有内容';
           });
@@ -609,9 +644,9 @@ class _HomePageState extends State<HomePage> {
           10,
           bottomContentPadding(context),
         ),
-        itemCount: (latest ?? document?.latest ?? []).length + 2,
+        itemCount: (latest ?? const <ForumLink>[]).length + 2,
         itemBuilder: (context, index) {
-          final items = latest ?? document?.latest ?? <ForumLink>[];
+          final items = latest ?? const <ForumLink>[];
           if (index == 0) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -777,13 +812,6 @@ class _HomePageState extends State<HomePage> {
             return ThreadTile(
               key: ValueKey('$revision:${item.url}'),
               link: item,
-              loadSummary: (active) {
-                final generation = revision;
-                return widget.client.threadSummary(
-                  item.url,
-                  () => active() && mounted && generation == revision,
-                );
-              },
               onTap: () => browse(item),
             );
           }
@@ -817,13 +845,19 @@ class _HomePageState extends State<HomePage> {
     children: [
       SearchBar(
         hintText: '搜索帖子、作者与内容',
-        leading: const Icon(Icons.search),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-            builder: (_) => SearchPage(client: widget.client),
-          ),
+        leading: const Padding(
+          padding: EdgeInsetsDirectional.only(start: 8),
+          child: Icon(Icons.search),
         ),
+        onTap: () {
+          HapticFeedbackUtil.light();
+          Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => SearchPage(client: widget.client),
+            ),
+          );
+        },
         readOnly: true,
       ),
       const SizedBox(height: 24),
@@ -834,7 +868,7 @@ class _HomePageState extends State<HomePage> {
               ('最新发表', 'newthread', Icons.schedule),
               ('最新回复', 'new', Icons.chat_bubble_outline),
               ('人气热门', 'hot', Icons.local_fire_department_outlined),
-              ('精华采撷', 'digest', Icons.star_outline),
+              ('精华内容', 'digest', Icons.star_outline),
             ])
               ReviewPreferenceTile(
                 title: item.$1,
@@ -1298,6 +1332,7 @@ class _SearchPageState extends State<SearchPage> {
   void submit() {
     final query = input.text.trim();
     if (query.isEmpty) return;
+    HapticFeedbackUtil.light();
     FocusScope.of(context).unfocus();
     openForumWeb(
       context,
@@ -1318,6 +1353,7 @@ class _SearchPageState extends State<SearchPage> {
         children: [
           SearchBar(
             controller: input,
+            onTap: HapticFeedbackUtil.light,
             autoFocus: true,
             hintText: '输入关键词',
             leading: const Icon(Icons.search),
