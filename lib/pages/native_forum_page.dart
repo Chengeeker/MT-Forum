@@ -202,7 +202,11 @@ class NativeForumPageState extends State<NativeForumPage> {
     return discard == true;
   }
 
-  Future<void> openLink(String href, [String title = 'MT论坛']) async {
+  Future<void> openLink(
+    String href, [
+    String title = 'MT论坛',
+    ForumLink? sourceLink,
+  ]) async {
     final uri = (document?.uri ?? widget.uri).resolve(href);
     if (!isForumUri(uri)) {
       if (mounted) await openExternal(context, uri);
@@ -256,7 +260,7 @@ class NativeForumPageState extends State<NativeForumPage> {
       if (mounted) {
         await openForum(
           context,
-          ForumLink(title, uri.toString()),
+          sourceLink ?? ForumLink(title, uri.toString()),
           widget.client,
           widget.preferences,
         );
@@ -913,7 +917,7 @@ class NativeForumPageState extends State<NativeForumPage> {
                         children: [
                           Text(
                             link.title,
-                        maxLines: 2,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.titleSmall,
                           ),
@@ -1028,7 +1032,7 @@ class NativeForumPageState extends State<NativeForumPage> {
                               mounted &&
                               revision == collectionRevision,
                         ),
-                  onTap: () => openLink(item.link.url, item.link.title),
+                  onTap: (link) => openLink(link.url, link.title, link),
                 ),
               ),
             ],

@@ -1,6 +1,6 @@
 # MT论坛开发文档
 
-更新：2026-10-28。当前版本：1.0.0+24。主文档同步至 `D:\App\开发文档\MT论坛.md`。
+更新：2026-10-28。当前版本：1.0.1+32。主文档同步至 `D:\App\开发文档\MT论坛.md`。
 
 ## 用户要求与边界
 - Android 包名 `bbs.binmt.cc`，应用名 MT论坛，仅 ARM64-v8a。
@@ -20,6 +20,7 @@
 - [x] 明暗/纯黑/动态取色/主题色/液态玻璃导航/触感偏好持久化
 - [x] Review 字体大小/字重偏好、悬浮底栏与磨砂顶栏复用
 - [x] Review 风格的共享元素图片打开动画、多图缩放画廊、原生视频播放
+- [x] 外链使用 M3 应用内浏览器；图片播放器液态玻璃控件在返回转场期间临时隐藏
 - [x] 用户提供启动器 icon
 - [x] 解析、安全边界、界面测试与 analyze
 - [x] ARM64 release APK 包名/版本/ABI/签名/哈希核验
@@ -30,9 +31,10 @@
 2. 本机 curl、移动 API 均收到 403，内置浏览器 ERR_HTTP_RESPONSE_CODE_FAILURE。网络失败必须显示原因及重试/官网入口，不能用“暂无数据”吞错。用户提示站点可能限制海外网络，需要核对本机代理路由。
 3. Review 仅复制 UI 组件，不复制微博业务、Cookie、账号或整个设置页。主题及磨砂来自当前源码，设置页按论坛能力组合。
 4. Review 画廊曾有分页/缩放手势问题。论坛版用 ExtendedImage 手势分页及 Hero 共享元素转场，关闭滑出手势；未迁移 Review 的手势仲裁、HDR、Live Photo 等微博专属逻辑，合入后仍需真机核对缩放与翻页冲突。
-5. 返回首页和 Tab 切换保持已有内容与滚动位置；不在 resume 自动刷新。仅显式刷新重载非空列表。
-6. 不关闭 TLS 验证，不将 Cookie 附到外站。登录会话由 Android WebView 私有 Cookie 存储维护；原生只按论坛 URL 读取。
-7. 原生登录页不仅要绑定“登录 / 注册”按钮，所有需要账号的入口及官网登录重定向都必须经过统一导航；否则游客点消息等操作仍会看到网页登录。登录取消不得继续打开目标网页。
+5. 用户点击的外链使用 M3 应用内 WebView；只接收无 user-info 的 HTTP(S) 地址，`mailto:` 交给系统应用，其他 scheme 拒绝。保留 `usesCleartextTraffic=false`，明文 HTTP 可能被 Android/WebView 阻止；不附加论坛认证头或 Cookie。
+6. 返回首页和 Tab 切换保持已有内容和滚动位置；不在 resume 自动刷新。仅显式刷新重载非空列表。
+7. 不关闭 TLS 验证，不将 Cookie 附到外站。登录会话由 Android WebView 私有 Cookie 存储维护；原生只按论坛 URL 读取。
+8. 原生登录页不仅要绑定“登录 / 注册”按钮，所有需要账号的入口及官网登录重定向都必须经过统一导航；否则游客点消息等操作仍会看到网页登录。登录取消不得继续打开目标网页。
 
 ## 架构规划
 - Flutter M3 原生首页、列表、阅读、搜索、设置；Dio 获取官网 HTML，html 解析 Discuz 页面，不依赖未核实的私有 API。
@@ -72,7 +74,7 @@
 - 未连接 Android 真机；真实账号登录、验证码、发帖、回复、签到、私信、附件上传/下载未作端到端验收，不能由编译通过推断成功。
 - 签到快捷入口打开官网板块页后需手动点击签到；不显示伪造的“已签到”。
 - 除账号密码登录表单外，注册、发帖、回复、搜索结果、账号/消息仍为主题适配后的官网界面，不能宣称所有页面已经完整原生 M3 或与 Review 一模一样。
-- 液态玻璃仅用于 Review 同款悬浮底栏，设置可开启或关闭；未将玻璃材质扩展到整个应用。图库现在有 Hero 打开动画、多图滑动、双指缩放及双击缩放；不含 HDR、Live Photo 或 Review 的自定义拖拽手势。视频仅播放帖子正文中识别到的 HTTPS 直链（mp4/m3u8/m4v/mov/webm），含播放/暂停、拖动进度、倍速和重试；不含画质选择、画中画、下载管理或网页 iframe 播放。
+- 液态玻璃仅用于 Review 同款悬浮底栏，设置可开启或关闭；未将玻璃材质扩展到整个应用。图库有 Hero 打开动画、多图滑动、双指缩放及双击缩放，支持保存当前图片至系统相册；不含 HDR、Live Photo 或 Review 的自定义拖拽手势。视频仅播放帖子正文中识别到的 HTTPS 直链（mp4/m3u8/m4v/mov/webm），含播放/暂停、拖动进度、倍速和重试；不含画质选择、画中画、批量下载管理或网页 iframe 播放。
 - 无新增网络代理到 APK，用户设备仍需能访问论坛。没有后台轮询、自动发帖、自动刷新非空内容或全帖图片预加载。
 - Root APK 只保留最新交付；构建中间版在 build/rollback，仅作为回退证据，不能作为最终交付。
 
@@ -116,7 +118,7 @@
 ## 2026-10-25 Review 设置与媒体交互复用
 - 设置页继续使用 Review 的 M3 ChoiceTile、SwitchTile、PreferenceTile、SectionCard 和磨砂顶栏；新增 Review 风格的应用字体缩放/字重与悬浮底栏偏好，所有偏好写入 SharedPreferences。大字号下字重选择对话框可滚动。
 - 论坛首页、发现/搜索、登录、个性化、论坛列表/正文、媒体画廊及视频页均使用 `ReviewFrostedAppBar`；保留系统状态栏与 M3 语义颜色。
-- 帖子内图片使用 Hero 标签从原位置过渡到全屏画廊。画廊基于 `extended_image`，可左右翻页、双指缩放/双击缩放；关闭滑出关闭手势以免与缩放和分页抢事件。图片请求只允许 HTTPS；同站或 `cdn.binmt.cc` 带 Referer 和 UA，不携带 Cookie。
+- 帖子内图片使用 Hero 标签从原位置过渡到全屏画廊。画廊基于 `extended_image`，可左右翻页、双指缩放/双击缩放；关闭滑出关闭手势以免与缩放和分页抢事件。Review 顶栏样式包含圆形返回/保存按钮和居中页码；保存当前 HTTPS 图片到 `Pictures/MT论坛`，仅传 Referer/UA、不传论坛 Cookie，单图限制 64MB。Android 10+ 用 MediaStore，Android 9 及更早系统使用运行时存储权限。图片请求只允许 HTTPS；同站或 `cdn.binmt.cc` 带 Referer 和 UA，不携带 Cookie。
 - 论坛视频页基于 Review 已用的 `video_player`，支持播放/暂停、进度拖动、0.5×–2×倍速、失败重试。解析只识别带标准文件扩展名的 HTTPS 直链；外站媒体不带论坛 Referer、UA 或 Cookie。签名帖子附件若依赖登录 Cookie，Flutter 原生播放器可能无法取回。
 - Review 的微博画质/直播解析、画中画、HDR/Live Photo、下载管理依赖特定站点数据和服务，本次不复制。公开视频和真机上的画廊手势、播放器硬件解码及大字号布局尚未设备验收。
 - Windows 上 Flutter 的 `.bat` 启动流程在受限目录中未进入 Dart 任务；标准构建脚本现直接调用已安装 SDK 的 `flutter_tools.snapshot`，仍在 ASCII 临时目录复制生产源码、离线解析依赖并构建同一 ARM64 release。调用前需允许 Flutter SDK 写入它自己的 `bin/cache` 锁文件。
@@ -392,3 +394,64 @@
 - 导读列表没有提供摘要、用户组或点赞数时不再额外请求每篇帖子补齐，因此这些字段按服务端列表实际返回值展示；保留列表提供的标题、作者、头像、日期及浏览/回复数。若以后要保留逐帖摘要，需先有官方批量接口或缓存策略，避免恢复逐条网络请求。
 - 版本名保持 1.0.0，versionCode 增至 24。必要检查为 Dart 静态分析、ARM64 release 构建及包身份/ABI/签名/16KB 对齐核验；本轮不运行额外 Flutter 测试，未安装真机。
 - 最终 ARM64 正式包：`MT论坛_v1.0.0_arm64.apk`，25,086,084 字节，SHA-256 `b16b98b528bbc2cc8fdb50cda2dcabf80a3a8f27e8047384cf0e110a363219e6`；aapt 确认 `bbs.binmt.cc` / `1.0.0+24` / 应用名 MT论坛，仅 arm64-v8a。原签名证书、原图标资源 SHA-256 `6cc19ee2603f723038dc8771b389f86da56ce0791ae1af765c754c2adc4044a1`、16KB zipalign 均通过；193 个生产源码/资源/配置文件与编译快照逐项哈希一致。记录见 `build/release-verification.json`、`build/final-apk-signature.txt`，构建与分析日志为 `build/home-feed-batch-build.log`、`build/home-feed-batch-analyze.log`。code23 APK 已保存在 rollback；未安装真机。
+
+## 2026-10-28 浅色液态玻璃底栏同步 GreenNote（1.0.0+25）
+
+- 按 GreenNote 浅色玻璃导航的更新调整 MT 论坛悬浮底栏：浅色外壳采用 0xF0FFFFFF 白色 tint、rimLight 1 和 0xF5FFFFFF IgnorePointer 细描边；选中镜片使用 clear body、0x18000000 轻微暗 tint、rimShade 0.12、rimLight 0.35，保留折射率 1.18 与色散 0.025。
+- 浅色选中图标/文字用 M3 primary，未选中用 onSurfaceVariant，镜片轨道用 0x26000000；深色外壳、镜片、白色前景与玻璃关闭时的 NavigationBar 保持原设置。MT 论坛目前仅底栏使用 Liquid Glass，因此没有扩展到其他页面。
+- 明确排除图片播放器：本次未修改图片播放器或其玻璃按钮。新增回归用例验证浅色与深色参数、描边及镜片状态；1 项定向 Widget 测试通过，home_page.dart 与 widget_test.dart 定向 analyze 无问题。
+- 版本名保持 1.0.0，versionCode 增至 25。正式包为 MT论坛_v1.0.0_arm64.apk，25,086,084 字节，SHA-256 DE0AD5119F66790E77331D5F41F9CF76C45E8B63E342E333C360A308FFEBC600；包名 bbs.binmt.cc、仅 arm64-v8a、V2 证书 SHA-256 3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975、16KB 对齐均通过。启动器图标资源 SHA-256 仍为 6CC19EE2603F723038DC8771B389F86DA56CE0791AE1AF765C754C2ADC4044A1，193 个生产源码/资源/配置文件与编译快照一致。
+- 旧 code24 包已保留 build/rollback/MT论坛_v1.0.0_code24_arm64.apk；aapt 确认其版本为 1.0.0+24，现存文件 SHA-256 为 B16B98B528BBC2CC8FD268AB71AF694BE590BA8C55FCC7A5EF3F13A1CB7412CA。该哈希与此前 code24 核验记录所列值不同；此处如实记录实际回退文件，不推断差异原因。核验明细 build/release-verification.json、build/final-apk-signature.txt 与 build/liquid-glass-light-checks.txt。未安装真机；不同屏幕背景下的真实 GPU 玻璃观感尚未目视验收。
+
+## 2026-10-28 首页帖子卡片统一与首楼信息层级（1.0.0+26）
+- 首页热帖排行榜仍使用原生排行榜卡片；最新帖子现在通过 DecoratedSliver 采用相同的 M3 surfaceContainer / surfaceContainerLow 语义色与 12dp 圆角，将标题、帖子列表和分页状态放在一个连续容器中。帖子仍由 SliverList.builder 逐条惰性构建，没有把 20 条帖子塞进 Column；保留冷启动约 20 条预取、接近末尾 600dp 加载下一页、去重和失败重试。
+- 帖子详情磨砂顶栏显示首楼头像、昵称和由论坛资料 URL 提取的 UID；昵称仍可点击打开原资料页。正文区保留帖子标题和首楼正文，移除重复首楼作者、用户组、楼层和发布时间行；其他回复楼继续显示各自作者/用户组/发布时间，保留讨论上下文。
+- 回归覆盖首页帖子属于统一 M3 sliver surface、首楼作者与 UID 位于 AppBar、首楼不重复展示作者/时间，以及“首批凑满 20 后才展示、接近列表末尾才加载下一页”的分页行为。早期分页测试仍假设第 15 条触发首次加载，与既有 20 条预取契约不符；已改为覆盖预取和后续滚动加载。
+- 必要检查：97 项 Flutter 测试与 4 项登录桥接检查通过；四个改动源码/测试文件 dart analyze 无诊断。正式包身份/签名/单 ABI/16KB 对齐通过，215 个 lib/assets/packages/test 与 pubspec/analyzer 配置文件和 ASCII 构建快照哈希一致。检查记录 build/home-feed-layout-checks.txt、build/home-feed-layout-build.txt、build/final-apk-signature.txt。
+- 版本名保持 1.0.0，versionCode 增至 26。正式包 MT论坛_v1.0.0_arm64.apk，25,151,620 字节，SHA-256 A91D5B0733CAA2E9F52DA6F9C3E0FCADAF4818AEFADE25245DE38E6A5E107499；包名 bbs.binmt.cc，只有 arm64-v8a，V2 证书 SHA-256 3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975，16KB 对齐和原图标资源哈希均通过。旧 code25 APK 已归档 build/rollback/MT论坛_v1.0.0_code25_arm64.apk，SHA-256 DE0AD5119F66790E77331D5F41F9CF76C45E8B63E342E333C360A308FFEBC600。
+- 未安装到手机；实际设备上的滚动、头像网络加载及视觉效果仍未目视验收。本轮未推送 GitHub。
+
+## 2026-10-28 浅色液态玻璃悬浮底栏柔和阴影（1.0.0+27）
+- 仅浅色模式的 `GlassTabBar` 外壳配置增加 `shadowElevation: 0.55`。深色外壳仍为 0；`indicatorSettings` 未修改，选中玻璃镜片的阴影参数保持原值；普通玻璃控件和图片播放器均未触及。
+- 回归断言覆盖浅色外壳 0.55、深色外壳 0、镜片原参数 1。定向 Flutter widget 测试 1 项通过；`home_page.dart` 与 `widget_test.dart` 定向静态分析无诊断。测试在 ASCII 临时快照执行，避免 Flutter shader include 在中文源码路径下无法解析。
+- 版本名保持 `1.0.0`，versionCode 更新为 27。正式 ARM64 APK：`MT论坛_v1.0.0_arm64.apk`，25,151,620 字节，SHA-256 `91B51E0A73DCE0CA24373B10413637CF8E0464BF534D4B3597F54EF075B25DEC`。aapt 确认包名 `bbs.binmt.cc`、应用名 MT论坛、版本 1.0.0+27；APK 仅含 arm64-v8a，V2 签名证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`，16KB zipalign 通过，图标资源哈希仍为 `6CC19EE2603F723038DC8771B389F86DA56CE0791AE1AF765C754C2ADC4044A1`。193 个生产源码、资源和配置文件与构建快照一致。
+- code26 APK 已保存为 `build/rollback/MT论坛_v1.0.0_code26_arm64.apk`，SHA-256 `A91D5B0733CAA2E9F52DA6F9C3E0FCADAF4818AEFADE25245DE38E6A5E107499`；构建源码快照保存在 `build/source-snapshots/v1.0.0+26`。核验记录见 `build/release-verification.json`、`build/final-apk-signature.txt` 和 `build/light-glass-shadow-checks.txt`。
+- 未安装到手机；真实设备上的浅色投影强度与不同背景下观感未目视验收。
+## 2026-10-28 底栏页面平移与帖子首楼信息（1.0.0+28）
+- 底栏的首页、发现、消息、我的保持为同级保活页面，改用受控 `PageView` 横向切换；点击导航后立即在同一回调调用 `animateToPage`，300ms `easeInOutCubic`。之前延迟至 post-frame 的调用在自动化布局里令页面停在第 0 页，造成胶囊先移动而内容页不跟随。保留无水波纹、单次触感、compose 弹出操作以及系统减少动画偏好；页面不能手势横滑，仍由底栏控制切换。
+- 帖子详情顶栏使用可用的首楼头像、用户名、论坛等级和发布时间，路由携带元数据时不等待正文加载，也不短暂显示文章标题；正文仍只显示标题和正文。正文图片继续使用原生 `ForumImageGalleryPage`、同一 Hero 标签与淡入/共享元素动画，未改播放器实现。
+- 52 项论坛解析、底栏、帖子详情、消息、登录与状态保留专项测试通过；7 个改动 Dart 文件定向 analyze 无诊断。日志 `build/bottom-tab-slide-build.log`。正式构建成功：`MT论坛_v1.0.0_arm64.apk`，25,151,620 字节，SHA-256 `2F5742AEFB11C64612F968B3771E56A81D94D19045CD6C6A8B2BA2C03A7C786C`。包名 `bbs.binmt.cc`、应用名 MT论坛、版本 `1.0.0+28`、仅 `arm64-v8a`、原 V2 证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975` 与 16KB zipalign 核验通过。核验见 `build/release-verification-code28.json`、`build/final-apk-signature-code28.txt`；code27 APK 保存在 `build/rollback/MT论坛_v1.0.0_code27_arm64.apk`。
+- 未安装真机；实际设备的页面方向/帧率、图片共享元素视觉仍需设备验收。本轮未推送 GitHub。
+
+## 2026-10-28 图片播放器顶部按钮对齐 Review（1.0.0+29）
+- 将图库普通页面标题栏与“复制链接”入口替换成 Review 的浮层三段布局：圆形磨砂返回按钮、居中图片页码、圆形保存按钮。关闭液态玻璃时使用 Review 同款 48dp 磨砂圆钮；打开时使用项目现有 `GlassButton`，跟随个性化开关。原 `ExtendedImage` 缩放/翻页、Hero 共享元素与页面动画不改。
+- 保存按钮下载当前 HTTPS 图片并写入 Android 公共图片相册 `Pictures/MT论坛`。使用论坛既有安全图片请求头，不附带 Cookie；拒绝非 HTTPS/用户信息 URL、空文件及超过 64MB 的数据。Android 10+ 通过 MediaStore 写入；Android 9 及更低版本按需请求系统存储权限。
+- 新增播放器顶栏按钮/页码 widget 回归。`thread_ui_test.dart` 12 项通过；`media_page.dart`、`forum_page.dart` 与 `thread_ui_test.dart` 定向 analyze 无诊断。正式 ARM64 构建成功，核验记录见 `build/gallery-controls-build.log`、`build/release-verification-code29.json` 和 `build/final-apk-signature-code29.txt`。
+- 版本名保持 `1.0.0`，versionCode 更新为 29。APK `MT论坛_v1.0.0_arm64.apk`，25,151,808 字节，SHA-256 `9EB52361C73030EECF320D5961D3B41A91163B72D0A8EABA52F5F34E0DB5617F`；包名 `bbs.binmt.cc`、应用名 MT论坛、仅 arm64-v8a、原 V2 签名证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`、16KB zipalign 均通过。code28 APK 回退副本为 `build/rollback/MT论坛_v1.0.0_code28_arm64.apk`，SHA-256 `2F5742AEFB11C64612F968B3771E56A81D94D19045CD6C6A8B2BA2C03A7C786C`。
+- 未安装真机；顶部实际观感、系统相册写入与旧系统权限提示仍需设备验收。
+
+
+
+## 2026-10-28 图片播放器加载预览无闪黑（1.0.0+30）
+- 根因：帖子图片模型先前只保留一个 URL；详情图和全屏原图共用它，而全屏 ExtendedImage 加载期间用进度指示器遮住整张图。现在 ForumPost.images 继续保存 HTTPS 原图，新增对齐的 imagePreviews 保存安全预览地址；解析优先取可用 src/data-src/data-original，跳过 none.gif、blank.gif、loading.gif 等占位图，并拒绝非 HTTPS 预览。
+- 帖子正文以预览地址渲染，打开画廊时仍请求原图。原图解码期间用与正文一致的 Image.network 预览层（可复用 Flutter 图片缓存）代替转圈遮挡；原图完成后沿用相同 BoxFit.contain 直接接替。原图失败时仍显示预览；图片来源没有独立缩略图时回退到原图地址。
+- 保留现有 Review 风格 Hero 标签/转场、Review 顶栏按钮、ExtendedImage 翻页缩放与保存行为；未改视频播放器、GIF/HDR/手势策略，也未添加全帖预加载。
+- 回归覆盖预览/原图地址并存、不安全及占位地址回退、加载时预览层存在。项目发布脚本中的版本核对改为读取当前 pubspec，避免每次升级 versionCode 后漏改硬编码。
+- 正式包版本名保持 1.0.0，versionCode 升至 30；仅 ARM64。Flutter 发布检查、定向 Dart analyze、包名/版本/ABI、V2 签名与 16KB zipalign 均通过。核验见 build/gallery-preview-checks.txt、build/release-verification-code30.json 与 build/final-apk-signature-code30.txt。code29 APK 和源码快照已保留用于回退。
+- 未安装真机；设备上不同论坛图片的真实缩略图结构、加载/替换观感仍待验收。没有独立预览 URL 的图片依赖正文图片缓存或同源地址重新载入。
+
+## 2026-10-28 液态玻璃返回性能与应用内浏览器（1.0.0+31）
+- 图片画廊监听自身路由动画状态：仅当液态玻璃偏好开启时，在 `reverse` 返回转场阶段移除顶部两个 `GlassButton`；普通磨砂按钮、图片层、Hero 动画及视频播放器均不变。
+- `openExternal` 的 HTTP(S) 入口现在推送 M3 应用内浏览器，顶栏复用 `ReviewFrostedAppBar`，提供加载进度、网页历史返回、刷新、关闭及错误重试。站外页面内的 HTTP(S) 主框架跳转继续留在浏览器；`mailto:` 交给系统邮件应用，含凭据 URL 和其他 scheme 拒绝。没有向外站附加论坛认证头或 Cookie。
+- 增加 HTTP(S) URL 边界回归和画廊反向转场回归；两项定向测试通过，四个相关 Dart 文件 analyze 无诊断。正式 ARM64 构建成功，aapt 确认包名 `bbs.binmt.cc`、应用名 MT论坛、版本 `1.0.0+31`；APK 仅含 `arm64-v8a`，V2 签名证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`，16KB zipalign 通过。APK 25,151,808 字节，SHA-256 `AD34AC54E3D7BCEAAD6E92E5E82BCDB45F3B03C467CD39F90458040699CAF160`。
+- code30 回退包 `build/rollback/MT论坛_v1.0.0_code30_arm64.apk` 保留，SHA-256 `36F515710E4C16FE42AF2D2456E78F93519BBE8460CB7B2DF0704D137123EE41`；本轮源码快照 `build/source-snapshots/v1.0.0+31`。构建记录 `build/external-browser-glass-build.log`、签名 `build/final-apk-signature-code31.txt`、核验 `build/release-verification-code31.json`。
+- 未安装真机；外站页面交互、明文 HTTP（受 `usesCleartextTraffic=false` 限制）及实际设备上的玻璃转场性能仍需设备验收。
+
+## 2026-10-28 帖子 Markdown 代码块原生渲染（1.0.1+32）
+- Discuz `.blockcode` 和 `<pre>` 统一渲染为紧凑的 M3 代码卡片，使用可选中等宽文本、受限高度滚动及真实系统剪贴板“复制代码”按钮；保留正文普通链接的原生打开行为。
+- 代码文本按列表/换行 DOM 提取，忽略网站仅用于呈现的列表标号；解析阶段移除内联事件属性，网站旧 `onclick` 不再作为不可操作的静态“复制代码”文字呈现。
+- 调整段落、列表项和标题间距，减少 Markdown/HTML 默认结构造成的大面积空隙，保持正文卡片和 M3 主题。
+- 图片进入画廊的淡入共享元素路由时长从 220ms 调为 330ms；返回仍为 200ms，转场曲线不变。
+- `thread_ui_test.dart` 的 14 项帖子/播放器/回复专项测试通过；改动的 3 个 Dart 文件 analyze 无诊断。回归覆盖 Discuz 合成代码块卡片、换行和精确写入剪贴板。
+- 正式 ARM64 APK：`MT论坛_v1.0.1_arm64.apk`，25,217,420 字节，SHA-256 `487F5D5C8A6F8B1F9AB57C42B9122C60C339CEE59A000772807576D724CE7C41`；aapt 核实 `bbs.binmt.cc` / `1.0.1+32` / MT论坛，ZIP 仅含 `arm64-v8a`，V2 签名证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`，16KB zipalign 通过。记录见 `build/release-verification-code32.json`、`build/final-apk-signature-code32.txt` 和 `build/markdown-codeblock-build.log`。
+- code31 回退包 `build/rollback/MT论坛_v1.0.0_code31_arm64.apk` 的 SHA-256 与原包一致：`AD34AC54E3D7BCEAAD6E92E5E82BCDB45F3B03C467CD39F90458040699CAF160`；本版源码快照 `build/source-snapshots/v1.0.1+32`。未安装真机；目标网站在本机返回反爬验证页，设备上的真实帖子排版尚待验收。

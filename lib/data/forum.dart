@@ -104,12 +104,34 @@ class ForumLink {
     this.excerpt = '',
     this.role = '',
     this.likes = '',
+    this.profile = '',
   });
   final String title, url, subtitle;
   final String author, date, views, replies;
-  final String excerpt, role, likes;
+  final String excerpt, role, likes, profile;
   final bool pinned, hot;
   final String? imageUrl;
+  ForumLink copyWith({
+    String? author,
+    String? role,
+    String? imageUrl,
+    String? profile,
+  }) => ForumLink(
+    title,
+    url,
+    subtitle: subtitle,
+    imageUrl: imageUrl ?? this.imageUrl,
+    author: author ?? this.author,
+    date: date,
+    views: views,
+    replies: replies,
+    pinned: pinned,
+    hot: hot,
+    excerpt: excerpt,
+    role: role ?? this.role,
+    likes: likes,
+    profile: profile ?? this.profile,
+  );
   Map<String, String> toJson() => {
     'title': title,
     'url': url,
@@ -130,11 +152,13 @@ class ForumPost {
     this.content,
     this.profile, {
     this.images = const [],
+    this.imagePreviews = const [],
     this.avatar,
     this.role = '',
   });
   final String id, author, meta, content, profile;
   final List<String> images;
+  final List<String> imagePreviews;
   final String? avatar;
   final String role;
 }
@@ -168,6 +192,45 @@ class ForumDocument {
 }
 
 String _clean(String text) => text.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+String forumCodeText(Element block) {
+  final pre = block.localName == 'pre' ? block : block.querySelector('pre');
+  final source = pre != null
+      ? pre.querySelector('code') ?? pre
+      : block.querySelector('ol') ?? block.querySelector('code') ?? block;
+  final output = StringBuffer();
+
+  void append(Node node) {
+    if (node is Text) {
+      output.write(node.data);
+    } else if (node is Element) {
+      if (node.localName == 'br') {
+        output.write('\n');
+        return;
+      }
+      for (var i = 0; i < node.nodes.length; i++) {
+        final child = node.nodes[i];
+        if (node.localName == 'ol' &&
+            child is Text &&
+            child.data.trim().isEmpty) {
+          continue;
+        }
+        append(child);
+        if (node.localName == 'ol' &&
+            child is Element &&
+            child.localName == 'li' &&
+            node.nodes
+                .skip(i + 1)
+                .any((next) => next is Element && next.localName == 'li')) {
+          output.write('\n');
+        }
+      }
+    }
+  }
+
+  append(source);
+  return output.toString().replaceAll('\r\n', '\n');
+}
 
 final _noWrapDeclaration = RegExp(
   r'^\s*white-space\s*:\s*nowrap(?:\s*!\s*important)?\s*$',
@@ -220,6 +283,16 @@ String? authorAvatar(String? href, Uri base) {
   return 'https://cdn.binmt.cc/uc_server/data/avatar/${id.substring(0, 3)}/${id.substring(3, 5)}/${id.substring(5, 7)}/${id.substring(7)}_avatar_middle.jpg';
 }
 
+String _forumProfile(String? href, Uri base) {
+  if (href == null) return '';
+  try {
+    final uri = base.resolve(href);
+    return isForumUri(uri) ? uri.toString() : '';
+  } on FormatException {
+    return '';
+  }
+}
+
 ForumDocument parseForum(String source, Uri base) {
   final doc = html.parse(source);
   final title = _clean(
@@ -269,6 +342,7 @@ ForumDocument parseForum(String source, Uri base) {
           '$forumOrigin/thread-$tid-1-1.html',
           subtitle: by,
           author: _clean(user?.text ?? ''),
+          profile: _forumProfile(user?.attributes['href'], base),
           imageUrl:
               avatar?.toString() ??
               authorAvatar(user?.attributes['href'], base),
@@ -329,17 +403,39 @@ ForumDocument parseForum(String source, Uri base) {
     final profile = user?.attributes['href'];
     // Keep media lazy and restricted to HTTPS; never preload a whole thread.
     final images = <String>[];
+    final imagePreviews = <String>[];
     for (final image in body.querySelectorAll('img').toList()) {
       final src =
           image.attributes['file'] ??
           image.attributes['zoomfile'] ??
+          image.attributes['data-src'] ??
           image.attributes['src'];
       final uri = _secureMediaUri(src, base);
       if (uri == null) {
         image.remove();
       } else {
-        image.attributes['src'] = uri.toString();
+        final preview =
+            [
+                  image.attributes['src'],
+                  image.attributes['data-src'],
+                  image.attributes['data-original'],
+                  image.attributes['file'],
+                  image.attributes['zoomfile'],
+                ]
+                .map((source) => _secureMediaUri(source, base))
+                .firstWhere(
+                  (candidate) =>
+                      candidate != null &&
+                      !const {'none.gif', 'blank.gif', 'loading.gif'}.contains(
+                        candidate.pathSegments.isEmpty
+                            ? ''
+                            : candidate.pathSegments.last.toLowerCase(),
+                      ),
+                  orElse: () => uri,
+                )!;
+        image.attributes['src'] = preview.toString();
         images.add(uri.toString());
+        imagePreviews.add(preview.toString());
       }
     }
 
@@ -371,6 +467,9 @@ ForumDocument parseForum(String source, Uri base) {
       unsafe.remove();
     }
     for (final element in body.querySelectorAll('*')) {
+      element.attributes.removeWhere(
+        (name, _) => name.toString().toLowerCase().startsWith('on'),
+      );
       final style = element.attributes['style'] ?? '';
       final declarations = style.split(';');
       final noWrap =
@@ -415,6 +514,7 @@ ForumDocument parseForum(String source, Uri base) {
         body.innerHtml,
         profile == null ? '' : base.resolve(profile).toString(),
         images: images,
+        imagePreviews: imagePreviews,
         avatar:
             _secureMediaUri(
               post
@@ -447,7 +547,9 @@ ForumDocument parseForum(String source, Uri base) {
           final uri = base.resolve(a.attributes['href']!);
           final id = threadId(uri);
           if (id == null || !isForumUri(uri) || !seen.add(id)) return null;
-          final tip = html.parseFragment(a.attributes['tips'] ?? '').text ?? '';
+          final tipHtml = html.parseFragment(a.attributes['tips'] ?? '');
+          final tip = tipHtml.text ?? '';
+          final user = tipHtml.querySelector('a[href*="uid"]');
           String field(String label, String end) =>
               RegExp(
                 '$label[：:]\\s*(.*?)$end',
@@ -458,6 +560,8 @@ ForumDocument parseForum(String source, Uri base) {
             _clean(a.attributes['title'] ?? a.text),
             '$forumOrigin/thread-$id-1-1.html',
             author: field('作者', r'时间[：:]'),
+            profile: _forumProfile(user?.attributes['href'], base),
+            imageUrl: authorAvatar(user?.attributes['href'], base),
             date: field('时间', r'浏览[：:]'),
             views: field('浏览', '次'),
             replies: field('回复', '次'),
@@ -558,13 +662,15 @@ class ThreadSummary {
     likes = document.likes;
     avatar = post.avatar;
     author = post.author;
-    final profile = forumUri(post.profile);
+    profile = post.profile;
+    final profileUri = forumUri(post.profile);
     uid =
-        RegExp(r'space-uid-(\d+)').firstMatch(profile.path)?.group(1) ??
-        profile.queryParameters['uid'] ??
+        RegExp(r'space-uid-(\d+)').firstMatch(profileUri.path)?.group(1) ??
+        profileUri.queryParameters['uid'] ??
         '';
   }
   late final String excerpt, role, likes, author, uid;
+  late final String profile;
   late final String? avatar;
 }
 

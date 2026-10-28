@@ -72,6 +72,7 @@ class _HomePageState extends State<HomePage> {
 
   int tab = 0;
   bool messagesOpened = false;
+  final tabs = PageController(keepPage: false);
   GlobalKey<NativeForumPageState> messageKey = GlobalKey();
   Uri messageUri = forumUri(messageSections.first.$2);
   List<ForumMessageTab> messageSubTabs = const [];
@@ -106,6 +107,7 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     sessionRevision.removeListener(accountChanged);
     forumAuthenticated.removeListener(authChanged);
+    tabs.dispose();
     scroll.dispose();
     super.dispose();
   }
@@ -379,6 +381,23 @@ class _HomePageState extends State<HomePage> {
       tab = index;
       if (index == 3) messagesOpened = true;
     });
+    if (tabs.hasClients) {
+      unawaited(
+        tabs.animateToPage(
+          index == 0
+              ? 0
+              : index == 1
+              ? 1
+              : index == 3
+              ? 2
+              : 3,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 300),
+          curve: Curves.easeInOutCubic,
+        ),
+      );
+    }
     if (index == 4) {
       unawaited(forumAuthCookie().then((_) => loadAccount()));
     }
@@ -620,7 +639,7 @@ class _HomePageState extends State<HomePage> {
                             () => active() && mounted && generation == revision,
                           );
                         },
-                        onTap: () => browse(item),
+                        onTap: browse,
                       ),
               ),
             const SizedBox(height: 8),
@@ -628,88 +647,118 @@ class _HomePageState extends State<HomePage> {
         ),
       );
 
-  Widget home() => ScrollConfiguration(
-    behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
-    child: RefreshIndicator(
-      onRefresh: refresh,
-      edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight,
-      child: ListView.builder(
-        controller: scroll,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: ClampingScrollPhysics(),
-        ),
-        padding: EdgeInsets.fromLTRB(
-          10,
-          MediaQuery.paddingOf(context).top + kToolbarHeight + 6,
-          10,
-          bottomContentPadding(context),
-        ),
-        itemCount: (latest ?? const <ForumLink>[]).length + 2,
-        itemBuilder: (context, index) {
-          final items = latest ?? const <ForumLink>[];
-          if (index == 0) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                LayoutBuilder(
-                  builder: (context, constraints) => Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final item in <(String, IconData, VoidCallback)>[
-                        (
-                          '签到',
-                          Icons.event_available_outlined,
-                          () => openSite('签到', 'k_misign-sign.html'),
-                        ),
-                        (
-                          '精华',
-                          Icons.star_outline_rounded,
-                          () => guide('精华', 'digest'),
-                        ),
-                        (
-                          '版规',
-                          Icons.gavel_outlined,
-                          () => browse(
-                            const ForumLink(
-                              'MT论坛总版规',
-                              '$forumOrigin/thread-85763-1-1.html',
-                            ),
+  Widget homeHeader() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      LayoutBuilder(
+        builder: (context, constraints) => Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final item in <(String, IconData, VoidCallback)>[
+              (
+                '签到',
+                Icons.event_available_outlined,
+                () => openSite('签到', 'k_misign-sign.html'),
+              ),
+              ('精华', Icons.star_outline_rounded, () => guide('精华', 'digest')),
+              (
+                '版规',
+                Icons.gavel_outlined,
+                () => browse(
+                  const ForumLink(
+                    'MT论坛总版规',
+                    '$forumOrigin/thread-85763-1-1.html',
+                  ),
+                ),
+              ),
+              (
+                '手册',
+                Icons.menu_book_outlined,
+                () => openExternal(context, Uri.parse('https://mt.cc/guide/')),
+              ),
+            ])
+              SizedBox(
+                width: (constraints.maxWidth - 24) / 4,
+                child: AppSectionCard(
+                  borderRadius: 12,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: item.$3,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 20,
+                        horizontal: 2,
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            item.$2,
+                            size: 24,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
-                        ),
-                        (
-                          '手册',
-                          Icons.menu_book_outlined,
-                          () => openExternal(
-                            context,
-                            Uri.parse('https://mt.cc/guide/'),
+                          const SizedBox(height: 8),
+                          Text(
+                            item.$1,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.labelMedium,
                           ),
-                        ),
-                      ])
-                        SizedBox(
-                          width: (constraints.maxWidth - 24) / 4,
-                          child: AppSectionCard(
-                            borderRadius: 12,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 8),
+      AppSectionCard(
+        borderRadius: 12,
+        child: Column(
+          children: [
+            ListTile(
+              dense: true,
+              minTileHeight: 48,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              title: Text('板块', style: Theme.of(context).textTheme.titleMedium),
+              trailing: Icon(expanded ? Icons.expand_less : Icons.expand_more),
+              onTap: () => setState(() => expanded = !expanded),
+            ),
+            if (expanded)
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns = constraints.maxWidth > 650
+                      ? 6
+                      : (MediaQuery.textScalerOf(context).scale(14) > 22
+                            ? 3
+                            : 4);
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                    child: Wrap(
+                      children: [
+                        for (final b in boards)
+                          SizedBox(
+                            width: (constraints.maxWidth - 16) / columns,
                             child: InkWell(
                               borderRadius: BorderRadius.circular(12),
-                              onTap: item.$3,
+                              onTap: () => browse(
+                                ForumLink(
+                                  b.$1,
+                                  '$forumOrigin/forum-${b.$2}-1.html',
+                                ),
+                              ),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 20,
+                                  vertical: 4,
                                   horizontal: 2,
                                 ),
                                 child: Column(
                                   children: [
-                                    Icon(
-                                      item.$2,
-                                      size: 24,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary,
-                                    ),
-                                    const SizedBox(height: 8),
+                                    boardAvatar(b),
+                                    const SizedBox(height: 4),
                                     Text(
-                                      item.$1,
+                                      b.$1,
                                       textAlign: TextAlign.center,
                                       style: Theme.of(context)
                                           .textTheme
@@ -720,120 +769,142 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                AppSectionCard(
-                  borderRadius: 12,
-                  child: Column(
-                    children: [
-                      ListTile(
-                        dense: true,
-                        minTileHeight: 48,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                        ),
-                        title: Text(
-                          '板块',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        trailing: Icon(
-                          expanded ? Icons.expand_less : Icons.expand_more,
-                        ),
-                        onTap: () => setState(() => expanded = !expanded),
-                      ),
-                      if (expanded)
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final columns = constraints.maxWidth > 650
-                                ? 6
-                                : (MediaQuery.textScalerOf(context).scale(14) >
-                                          22
-                                      ? 3
-                                      : 4);
-                            return Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                              child: Wrap(
-                                children: [
-                                  for (final b in boards)
-                                    SizedBox(
-                                      width:
-                                          (constraints.maxWidth - 16) / columns,
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(12),
-                                        onTap: () => browse(
-                                          ForumLink(
-                                            b.$1,
-                                            '$forumOrigin/forum-${b.$2}-1.html',
-                                          ),
-                                        ),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 4,
-                                            horizontal: 2,
-                                          ),
-                                          child: Column(
-                                            children: [
-                                              boardAvatar(b),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                b.$1,
-                                                textAlign: TextAlign.center,
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .labelMedium,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (error != null)
-                  FailurePanel(message: error!, retry: refresh),
-                threadSection('排行榜', document?.hot ?? [], 'hot'),
-                const SizedBox(height: 8),
-                sectionTitle('最新帖子', more: () => guide('最新帖子', 'newthread')),
-              ],
-            );
-          }
-          if (index <= items.length) {
-            final item = items[index - 1];
-            return ThreadTile(
-              key: ValueKey('$revision:${item.url}'),
-              link: item,
-              onTap: () => browse(item),
-            );
-          }
-          return ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 64),
-            child: latestLoading || (loading && items.isEmpty)
-                ? const Center(child: CircularProgressIndicator())
-                : latestError != null
-                ? FailurePanel(message: latestError!, retry: loadLatest)
-                : Center(
-                    child: latestNext != null
-                        ? TextButton(
-                            onPressed: loadLatest,
-                            child: const Text('加载更多帖子'),
-                          )
-                        : Text(items.isEmpty ? '暂时没有内容' : '已经到底了'),
-                  ),
-          );
-        },
+                      ],
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
       ),
-    ),
+      const SizedBox(height: 8),
+      if (error != null) FailurePanel(message: error!, retry: refresh),
+      threadSection('排行榜', document?.hot ?? [], 'hot'),
+    ],
   );
+
+  Widget home() {
+    final items = latest ?? const <ForumLink>[];
+    final colorScheme = Theme.of(context).colorScheme;
+    final sectionColor = colorScheme.surface == Colors.black
+        ? colorScheme.surfaceContainer
+        : colorScheme.surfaceContainerLow;
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+      child: RefreshIndicator(
+        onRefresh: refresh,
+        edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight,
+        child: CustomScrollView(
+          controller: scroll,
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: ClampingScrollPhysics(),
+          ),
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                10,
+                MediaQuery.paddingOf(context).top + kToolbarHeight + 6,
+                10,
+                8,
+              ),
+              sliver: SliverToBoxAdapter(child: homeHeader()),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              sliver: DecoratedSliver(
+                decoration: BoxDecoration(
+                  color: sectionColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                sliver: SliverMainAxisGroup(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: sectionTitle(
+                        '最新帖子',
+                        more: () => guide('最新帖子', 'newthread'),
+                      ),
+                    ),
+                    if (items.isEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Center(
+                            child: latestLoading || (loading && latest == null)
+                                ? Text(
+                                    '正在加载最新帖子…',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium,
+                                  )
+                                : latestError != null
+                                ? FailurePanel(
+                                    message: latestError!,
+                                    retry: loadLatest,
+                                  )
+                                : latestNext != null
+                                ? TextButton(
+                                    onPressed: loadLatest,
+                                    child: const Text('加载更多帖子'),
+                                  )
+                                : Text(
+                                    '暂时没有内容',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium,
+                                  ),
+                          ),
+                        ),
+                      ),
+                    if (items.isNotEmpty)
+                      SliverList.builder(
+                        itemCount: items.length,
+                        itemBuilder: (context, index) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: ThreadTile(
+                            key: ValueKey('$revision:${items[index].url}'),
+                            link: items[index],
+                            onTap: browse,
+                          ),
+                        ),
+                      ),
+                    if (items.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 64),
+                          child: Center(
+                            child: latestLoading
+                                ? Text(
+                                    '正在加载更多帖子…',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall,
+                                  )
+                                : latestError != null
+                                ? FailurePanel(
+                                    message: latestError!,
+                                    retry: loadLatest,
+                                  )
+                                : latestNext != null
+                                ? TextButton(
+                                    onPressed: loadLatest,
+                                    child: const Text('加载更多帖子'),
+                                  )
+                                : const Text('已经到底了'),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: SizedBox(height: bottomContentPadding(context)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget discover() => ListView(
     padding: EdgeInsets.fromLTRB(
@@ -1002,6 +1073,40 @@ class _HomePageState extends State<HomePage> {
       );
     }
     if (!widget.preferences.liquidGlass) return floatingNavigationBar();
+    final theme = Theme.of(context);
+    final isLightMode = theme.brightness == Brightness.light;
+    const baseGlassSettings = LiquidGlassSettings(
+      glassColor: Color(0x66000000),
+      bodyMode: GlassBodyMode.clear,
+      thickness: 10,
+      blur: 2,
+      lightIntensity: 0.25,
+      ambientStrength: 0,
+      refractiveIndex: 1.19,
+      chromaticAberration: 0.008,
+      shadowElevation: 0,
+    );
+    final glassSettings = isLightMode
+        ? baseGlassSettings.copyWith(
+            glassColor: const Color(0xF0FFFFFF),
+            rimLight: 1,
+            shadowElevation: 0.55,
+          )
+        : baseGlassSettings;
+    final indicatorSettings = isLightMode
+        ? const LiquidGlassSettings(
+            glassColor: Color(0x18000000),
+            bodyMode: GlassBodyMode.clear,
+            refractiveIndex: 1.18,
+            chromaticAberration: 0.025,
+            rimShade: 0.12,
+            rimLight: 0.35,
+          )
+        : const LiquidGlassSettings(
+            refractiveIndex: 1.18,
+            chromaticAberration: 0.025,
+          );
+    final colorScheme = theme.colorScheme;
     return SafeArea(
       bottom: false,
       child: Align(
@@ -1014,56 +1119,74 @@ class _HomePageState extends State<HomePage> {
             child: SizedBox(
               width: floatingNavigationWidth,
               height: 56,
-              child: GlassTabBar.bottom(
-                tabs: const [
-                  GlassTab(
-                    icon: Icon(Icons.home_outlined),
-                    activeIcon: Icon(Icons.home_rounded),
-                    label: '首页',
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: GlassTabBar.bottom(
+                      tabs: const [
+                        GlassTab(
+                          icon: Icon(Icons.home_outlined),
+                          activeIcon: Icon(Icons.home_rounded),
+                          label: '首页',
+                        ),
+                        GlassTab(icon: Icon(Icons.search), label: '发现'),
+                        GlassTab(icon: Icon(Icons.add), label: '发帖'),
+                        GlassTab(icon: Icon(Icons.mail_outline), label: '消息'),
+                        GlassTab(
+                          icon: Icon(Icons.person_outline),
+                          activeIcon: Icon(Icons.person),
+                          label: '我的',
+                        ),
+                      ],
+                      selectedIndex: tab,
+                      onTabSelected: selectTab,
+                      barHeight: 56,
+                      horizontalPadding: 0,
+                      verticalPadding: 0,
+                      barBorderRadius: 9999,
+                      indicatorBorderRadius: 9999,
+                      settings: glassSettings,
+                      indicatorSettings: indicatorSettings,
+                      quality: GlassQuality.premium,
+                      backgroundQuality: GlassQuality.premium,
+                      maskingQuality: MaskingQuality.high,
+                      enableBlend: true,
+                      innerBlur: 6,
+                      interactionBehavior: GlassInteractionBehavior.none,
+                      indicatorPinchStrength: 0,
+                      indicatorColor: isLightMode
+                          ? const Color(0x26000000)
+                          : const Color(0x66000000),
+                      selectedIconColor: isLightMode
+                          ? colorScheme.primary
+                          : Colors.white,
+                      selectedLabelColor: isLightMode
+                          ? colorScheme.primary
+                          : Colors.white,
+                      unselectedIconColor: isLightMode
+                          ? colorScheme.onSurfaceVariant
+                          : Colors.white,
+                      unselectedLabelColor: isLightMode
+                          ? colorScheme.onSurfaceVariant
+                          : Colors.white,
+                    ),
                   ),
-                  GlassTab(icon: Icon(Icons.search), label: '发现'),
-                  GlassTab(icon: Icon(Icons.add), label: '发帖'),
-                  GlassTab(icon: Icon(Icons.mail_outline), label: '消息'),
-                  GlassTab(
-                    icon: Icon(Icons.person_outline),
-                    activeIcon: Icon(Icons.person),
-                    label: '我的',
-                  ),
+                  if (isLightMode)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          key: const ValueKey('liquid-glass-light-rim'),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(9999),
+                            border: Border.all(
+                              color: const Color(0xF5FFFFFF),
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
-                selectedIndex: tab,
-                onTabSelected: selectTab,
-                barHeight: 56,
-                horizontalPadding: 0,
-                verticalPadding: 0,
-                barBorderRadius: 9999,
-                indicatorBorderRadius: 9999,
-                settings: const LiquidGlassSettings(
-                  glassColor: Color(0x66000000),
-                  bodyMode: GlassBodyMode.clear,
-                  thickness: 10,
-                  blur: 2,
-                  lightIntensity: 0.25,
-                  ambientStrength: 0,
-                  refractiveIndex: 1.19,
-                  chromaticAberration: 0.008,
-                  shadowElevation: 0,
-                ),
-                indicatorSettings: const LiquidGlassSettings(
-                  refractiveIndex: 1.18,
-                  chromaticAberration: 0.025,
-                ),
-                quality: GlassQuality.premium,
-                backgroundQuality: GlassQuality.premium,
-                maskingQuality: MaskingQuality.high,
-                enableBlend: true,
-                innerBlur: 6,
-                interactionBehavior: GlassInteractionBehavior.none,
-                indicatorPinchStrength: 0,
-                indicatorColor: const Color(0x66000000),
-                selectedIconColor: Colors.white,
-                selectedLabelColor: Colors.white,
-                unselectedIconColor: Colors.white,
-                unselectedLabelColor: Colors.white,
               ),
             ),
           ),
@@ -1245,66 +1368,70 @@ class _HomePageState extends State<HomePage> {
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1000),
-          child: IndexedStack(
-            index: tab == 0
-                ? 0
-                : tab == 1
-                ? 1
-                : tab == 3
-                ? 2
-                : 3,
+          child: PageView(
+            key: const ValueKey('bottom-tab-pages'),
+            controller: tabs,
+            physics: const NeverScrollableScrollPhysics(),
             children: [
-              home(),
-              discover(),
-              if (messagesOpened && forumAuthenticated.value)
-                NativeForumPage(
-                  key: messageKey,
-                  title: '消息',
-                  uri: messageUri,
-                  client: widget.client,
-                  preferences: widget.preferences,
-                  embedded: true,
-                  onMessageDocument: messageDocumentChanged,
-                  contentPadding: EdgeInsets.fromLTRB(
-                    16,
-                    MediaQuery.paddingOf(context).top +
-                        kToolbarHeight +
-                        messageTabHeight *
-                            (forumAuthenticated.value &&
-                                    messageSubTabs.isNotEmpty
-                                ? 2
-                                : 1) +
-                        16,
-                    16,
-                    bottomContentPadding(context),
-                  ),
-                )
-              else if (messagesOpened)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.mail_outline, size: 40),
-                        const SizedBox(height: 12),
-                        Text(
-                          '登录后查看消息',
-                          style: Theme.of(context).textTheme.titleMedium,
+              _RetainedTabPage(key: const ValueKey('home-tab'), child: home()),
+              _RetainedTabPage(
+                key: const ValueKey('discover-tab'),
+                child: discover(),
+              ),
+              _RetainedTabPage(
+                key: const ValueKey('messages-tab'),
+                child: messagesOpened && forumAuthenticated.value
+                    ? NativeForumPage(
+                        key: messageKey,
+                        title: '消息',
+                        uri: messageUri,
+                        client: widget.client,
+                        preferences: widget.preferences,
+                        embedded: true,
+                        onMessageDocument: messageDocumentChanged,
+                        contentPadding: EdgeInsets.fromLTRB(
+                          16,
+                          MediaQuery.paddingOf(context).top +
+                              kToolbarHeight +
+                              messageTabHeight *
+                                  (forumAuthenticated.value &&
+                                          messageSubTabs.isNotEmpty
+                                      ? 2
+                                      : 1) +
+                              16,
+                          16,
+                          bottomContentPadding(context),
                         ),
-                        const SizedBox(height: 16),
-                        FilledButton(
-                          onPressed: () =>
-                              showForumLogin(context, widget.client),
-                          child: const Text('登录 / 注册'),
+                      )
+                    : messagesOpened
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.mail_outline, size: 40),
+                              const SizedBox(height: 12),
+                              Text(
+                                '登录后查看消息',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton(
+                                onPressed: () =>
+                                    showForumLogin(context, widget.client),
+                                child: const Text('登录 / 注册'),
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                const SizedBox.shrink(),
-              profile(),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              _RetainedTabPage(
+                key: const ValueKey('profile-tab'),
+                child: profile(),
+              ),
             ],
           ),
         ),
@@ -1312,6 +1439,26 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: navigationBar(),
     ),
   );
+}
+
+class _RetainedTabPage extends StatefulWidget {
+  const _RetainedTabPage({super.key, required this.child});
+  final Widget child;
+
+  @override
+  State<_RetainedTabPage> createState() => _RetainedTabPageState();
+}
+
+class _RetainedTabPageState extends State<_RetainedTabPage>
+    with AutomaticKeepAliveClientMixin<_RetainedTabPage> {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
 }
 
 class SearchPage extends StatefulWidget {
@@ -1437,7 +1584,8 @@ class HistoryPage extends StatelessWidget {
                       () => active() && revision == sessionRevision.value,
                     );
                   },
-                  onTap: () => openForum(context, link, client, preferences),
+                  onTap: (selected) =>
+                      openForum(context, selected, client, preferences),
                 );
               },
             ),

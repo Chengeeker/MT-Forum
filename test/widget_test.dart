@@ -82,11 +82,16 @@ class HomeDetailClient extends FakeClient {
 class PaginatedHomeClient extends FakeClient {
   int nextCalls = 0;
   final page = Completer<ForumDocument>();
+  final lastPage = Completer<ForumDocument>();
   @override
   Future<ForumDocument> load(String url) async {
     if (url.contains('page=2')) {
       nextCalls++;
       return page.future;
+    }
+    if (url.contains('page=3')) {
+      nextCalls++;
+      return lastPage.future;
     }
     if (url.contains('mod=guide')) {
       return ForumDocument(
@@ -280,44 +285,74 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('分页帖子14', findRichText: true), findsNothing);
+    expect(client.nextCalls, 1);
+    client.page.complete(
+      ForumDocument(
+        title: '最新发表',
+        links: [
+          const ForumLink('分页帖子14', '$forumOrigin/thread-114-1-1.html'),
+          for (var i = 15; i < 20; i++)
+            ForumLink(
+              '分页帖子$i',
+              '$forumOrigin/thread-${100 + i}-1-1.html',
+              author: '作者$i',
+              excerpt: '摘要$i',
+            ),
+        ],
+        next: '$forumOrigin/forum.php?mod=guide&view=newthread&page=3',
+      ),
+    );
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.text('分页帖子14', findRichText: true),
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find
+          .descendant(
+            of: find.byType(CustomScrollView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
-    await tester.pump();
-    expect(client.nextCalls, 1);
-    client.page.complete(
+    expect(client.nextCalls, 2);
+    client.lastPage.complete(
       const ForumDocument(
         title: '最新发表',
         links: [
-          ForumLink('分页帖子14', '$forumOrigin/thread-114-1-1.html'),
+          ForumLink('分页帖子19', '$forumOrigin/thread-119-1-1.html'),
           ForumLink(
             '末页新增帖子',
-            '$forumOrigin/thread-115-1-1.html',
+            '$forumOrigin/thread-120-1-1.html',
             excerpt: '末页摘要',
           ),
         ],
-        next: '$forumOrigin/forum.php?mod=guide&view=newthread&page=2',
+        next: '$forumOrigin/forum.php?mod=guide&view=newthread&page=3',
       ),
     );
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.text('已经到底了'),
       200,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find
+          .descendant(
+            of: find.byType(CustomScrollView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     expect(find.text('末页新增帖子', findRichText: true), findsOneWidget);
     expect(find.text('末页摘要'), findsOneWidget);
     for (var i = 0; i < 3; i++) {
-      await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+      await tester.drag(
+        find.byType(CustomScrollView).first,
+        const Offset(0, -300),
+      );
       await tester.pumpAndSettle();
     }
-    expect(client.nextCalls, 1);
+    expect(client.nextCalls, 2);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('悬浮底栏按下没有水波纹，选中胶囊平滑移动', (tester) async {
+  testWidgets('底栏切页横向平移，悬浮选中胶囊无水波纹并平滑移动', (tester) async {
     await tester.pumpWidget(
       MtForumApp(
         preferences: await prefs(),
@@ -339,6 +374,15 @@ void main() {
         )
         .first;
     final start = tester.getTopLeft(pill).dx;
+    final pageScroll = tester.state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byType(PageView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(pageScroll.position.pixels, 0);
     final gesture = await tester.startGesture(tester.getCenter(target));
     await tester.pump();
     expect(tester.getTopLeft(pill).dx, start);
@@ -346,10 +390,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
     final middle = tester.getTopLeft(pill).dx;
+    expect(pageScroll.position.pixels, greaterThan(0));
     await tester.pumpAndSettle();
     final end = tester.getTopLeft(pill).dx;
     expect(middle, greaterThan(start));
     expect(end, greaterThan(middle));
+    expect(pageScroll.position.pixels, pageScroll.position.viewportDimension);
     expect(tester.takeException(), isNull);
   });
 
@@ -383,6 +429,64 @@ void main() {
     expect(overlay.resolve({WidgetState.focused}), isNull);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('液态玻璃浅色底栏使用白色外壳和清透选中镜片，暗色保持原样', (tester) async {
+    for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+      final settings = await prefs();
+      settings
+        ..liquidGlass = true
+        ..mode = mode;
+      await tester.pumpWidget(
+        MtForumApp(
+          preferences: settings,
+          client: FakeClient(),
+          useBrowserReader: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final context = tester.element(find.byType(GlassTabBar));
+      final isLightMode = mode == ThemeMode.light;
+      final scheme = Theme.of(context).colorScheme;
+      final glassBar = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
+      expect(
+        glassBar.settings?.glassColor,
+        isLightMode ? const Color(0xF0FFFFFF) : const Color(0x66000000),
+      );
+      expect(glassBar.settings?.shadowElevation, isLightMode ? 0.55 : 0);
+      expect(glassBar.settings?.rimLight, isLightMode ? 1 : 0);
+      expect(
+        glassBar.indicatorColor,
+        isLightMode ? const Color(0x26000000) : const Color(0x66000000),
+      );
+      expect(
+        glassBar.selectedIconColor,
+        isLightMode ? scheme.primary : Colors.white,
+      );
+      expect(
+        glassBar.unselectedLabelColor,
+        isLightMode ? scheme.onSurfaceVariant : Colors.white,
+      );
+      expect(
+        find.byKey(const ValueKey('liquid-glass-light-rim')),
+        isLightMode ? findsOneWidget : findsNothing,
+      );
+      if (isLightMode) {
+        expect(glassBar.indicatorSettings?.glassColor, const Color(0x18000000));
+        expect(glassBar.indicatorSettings?.bodyMode, GlassBodyMode.clear);
+        expect(glassBar.indicatorSettings?.rimShade, 0.12);
+        expect(glassBar.indicatorSettings?.rimLight, 0.35);
+      } else {
+        expect(glassBar.indicatorSettings?.glassColor, const Color(0x00FFFFFF));
+        expect(glassBar.indicatorSettings?.bodyMode, GlassBodyMode.adaptive);
+        expect(glassBar.indicatorSettings?.rimShade, 0);
+        expect(glassBar.indicatorSettings?.rimLight, 0);
+      }
+      expect(glassBar.indicatorSettings?.shadowElevation, 1);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   for (final fails in [false, true]) {
     testWidgets('首页排名与最新详情，导读失败=$fails 时保留首页数据', (tester) async {
       await tester.pumpWidget(
@@ -407,10 +511,20 @@ void main() {
         160,
         scrollable: find.byType(Scrollable).first,
       );
+      final latestCard = find.ancestor(
+        of: find.text(fails ? '提示中的作者' : '最新作者'),
+        matching: find.byType(DecoratedSliver),
+      );
+      expect(latestCard, findsOneWidget);
       expect(find.text('84'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
       expect(find.text('2026-10-26'), findsOneWidget);
-      if (!fails) expect(find.byType(ForumAvatar), findsOneWidget);
+      if (!fails) {
+        expect(
+          find.descendant(of: latestCard, matching: find.byType(ForumAvatar)),
+          findsOneWidget,
+        );
+      }
       expect(tester.takeException(), isNull);
     });
   }
@@ -693,11 +807,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('消息').last);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 320));
     await tester.pump();
     expect(client.pending, hasLength(1));
     cookie = 'forum_auth=second';
     sessionRevision.value++;
     await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 320));
     await tester.pump();
     expect(client.pending, hasLength(2));
     final fixture = File('test/fixtures/messages.html').readAsStringSync();
@@ -1026,7 +1143,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(client.calls, 2);
     expect(find.text('测试网络失败'), findsOneWidget);
-    await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+    await tester.drag(
+      find.byType(CustomScrollView).first,
+      const Offset(0, -600),
+    );
     await tester.pumpAndSettle();
     expect(find.text('热门话题测试'), findsOneWidget);
     expect(tester.takeException(), isNull);

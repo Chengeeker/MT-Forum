@@ -195,6 +195,7 @@ void main() {
     expect(data.links.first.pinned, isTrue);
     final link = data.links.last;
     expect(link.author, '测试作者');
+    expect(link.profile, 'https://bbs.binmt.cc/space-uid-123.html');
     expect(link.imageUrl, 'https://cdn.binmt.cc/avatar.jpg');
     expect(link.views, '12815');
     expect(link.replies, '103');
@@ -284,9 +285,31 @@ void main() {
     expect(data.title, '原始标题');
     expect(data.posts.single.author, 'Bin');
     expect(data.posts.single.content, contains('$forumOrigin/image.png'));
+    expect(data.posts.single.images, ['$forumOrigin/image.png']);
+    expect(data.posts.single.imagePreviews, ['$forumOrigin/image.png']);
     expect(data.posts.single.content, isNot(contains('script')));
     expect(data.posts.single.content, isNot(contains('iframe')));
     expect(data.next, '$forumOrigin/thread-99-2-1.html');
+  });
+  test('帖子保留缩略图与原图地址，忽略不安全和占位预览', () {
+    final data = parseForum('''<div id="post_123"><div id="postmessage_123">
+      <img src="/thumb.jpg" zoomfile="/original.jpg">
+      <img src="/static/image/common/none.gif" file="/fallback.jpg">
+      <img src="http://evil.test/thumb.jpg" file="/safe.jpg">
+      </div></div>''', forumUri('thread-99-1-1.html'));
+
+    expect(data.posts.single.images, [
+      '$forumOrigin/original.jpg',
+      '$forumOrigin/fallback.jpg',
+      '$forumOrigin/safe.jpg',
+    ]);
+    expect(data.posts.single.imagePreviews, [
+      '$forumOrigin/thumb.jpg',
+      '$forumOrigin/fallback.jpg',
+      '$forumOrigin/safe.jpg',
+    ]);
+    expect(data.posts.single.content, contains('src="$forumOrigin/thumb.jpg"'));
+    expect(data.posts.single.content, isNot(contains('evil.test')));
   });
   test('外站及非 HTTPS 地址不能携带会话或伪装为论坛帖子', () async {
     for (final url in [

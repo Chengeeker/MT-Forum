@@ -10,32 +10,175 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../core/design_system/components/review_frosted_app_bar.dart';
 import '../data/forum.dart';
 
+bool supportsInAppBrowserUri(Uri uri) =>
+    const {'http', 'https'}.contains(uri.scheme) &&
+    uri.host.isNotEmpty &&
+    uri.userInfo.isEmpty;
+
 Future<void> openExternal(BuildContext context, Uri uri) async {
-  if (!['https', 'http', 'mailto'].contains(uri.scheme)) return;
-  final accepted = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('打开外部链接'),
-      content: SelectableText(uri.toString()),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('打开'),
-        ),
-      ],
-    ),
-  );
-  if (accepted == true) {
+  if (supportsInAppBrowserUri(uri)) {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => InAppBrowserPage(url: uri)),
+    );
+  } else if (uri.scheme == 'mailto') {
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('没有可打开此链接的应用')));
     }
   }
+}
+
+class InAppBrowserPage extends StatefulWidget {
+  const InAppBrowserPage({super.key, required this.url});
+
+  final Uri url;
+
+  @override
+  State<InAppBrowserPage> createState() => _InAppBrowserPageState();
+}
+
+class _InAppBrowserPageState extends State<InAppBrowserPage> {
+  late final WebViewController controller;
+  late Uri currentUrl;
+  int progress = 0;
+  int navigationRevision = 0;
+  bool canGoBack = false;
+  bool closing = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    currentUrl = widget.url;
+    controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            if (!request.isMainFrame) return NavigationDecision.navigate;
+            final uri = Uri.tryParse(request.url);
+            if (uri != null && supportsInAppBrowserUri(uri)) {
+              return NavigationDecision.navigate;
+            }
+            if (uri?.scheme == 'mailto') {
+              unawaited(openExternal(context, uri!));
+            }
+            return NavigationDecision.prevent;
+          },
+          onPageStarted: (url) {
+            final uri = Uri.tryParse(url);
+            if (mounted) {
+              setState(() {
+                if (uri != null) currentUrl = uri;
+                progress = 0;
+                error = null;
+                navigationRevision++;
+              });
+            }
+          },
+          onProgress: (value) {
+            if (mounted) setState(() => progress = value);
+          },
+          onPageFinished: _finishNavigation,
+          onWebResourceError: (event) {
+            if (event.isForMainFrame == true && mounted) {
+              setState(() => error = '页面加载失败，请检查网络后重试。');
+            }
+          },
+        ),
+      );
+    unawaited(loadInitialPage());
+  }
+
+  Future<void> loadInitialPage() async {
+    try {
+      await controller.loadRequest(widget.url);
+    } catch (_) {
+      if (mounted) setState(() => error = '页面初始化失败，请重试。');
+    }
+  }
+
+  Future<void> _finishNavigation(String url) async {
+    final revision = navigationRevision;
+    final back = await controller.canGoBack();
+    final uri = Uri.tryParse(url);
+    if (!mounted || revision != navigationRevision) return;
+    setState(() {
+      if (uri != null) currentUrl = uri;
+      progress = 100;
+      canGoBack = back;
+    });
+  }
+
+  Future<void> close() async {
+    if (closing || !mounted) return;
+    setState(() => closing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
+
+  Future<void> handleSystemBack() async {
+    if (!canGoBack) return;
+    await controller.goBack();
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: closing || !canGoBack,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop && !closing) unawaited(handleSystemBack());
+    },
+    child: Scaffold(
+      appBar: ReviewFrostedAppBar(
+        leading: IconButton(
+          tooltip: '关闭浏览器',
+          icon: const Icon(Icons.close),
+          onPressed: close,
+        ),
+        title: Text(
+          currentUrl.host,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        actions: [
+          IconButton(
+            tooltip: '后退',
+            onPressed: canGoBack ? controller.goBack : null,
+            icon: const Icon(Icons.arrow_back),
+          ),
+          IconButton(
+            tooltip: '刷新',
+            onPressed: controller.reload,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            if (error == null && progress < 100)
+              LinearProgressIndicator(
+                value: progress == 0 ? null : progress / 100,
+              ),
+            if (error != null)
+              MaterialBanner(
+                content: Text(error!),
+                actions: [
+                  TextButton(
+                    onPressed: controller.reload,
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            Expanded(child: WebViewWidget(controller: controller)),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 final sessionRevision = ValueNotifier<int>(0);
@@ -291,7 +434,7 @@ class _ForumWebPageState extends State<ForumWebPage> {
           ),
           if (!widget.qqLogin)
             IconButton(
-              tooltip: '浏览器打开',
+              tooltip: '应用内浏览',
               onPressed: () => openExternal(context, Uri.parse(widget.url)),
               icon: const Icon(Icons.open_in_browser),
             ),

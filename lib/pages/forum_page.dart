@@ -479,6 +479,75 @@ class _ForumPageState extends State<ForumPage> {
     }
   }
 
+  Future<void> copyCode(String code) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: code));
+      if (!mounted) return;
+      HapticFeedbackUtil.light();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('代码已复制')));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('复制失败')));
+      }
+    }
+  }
+
+  Widget codeBlock(String code) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 4, 0),
+              child: Row(
+                children: [
+                  Text('代码', style: theme.textTheme.labelLarge),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () => copyCode(code),
+                    icon: const Icon(Icons.content_copy_rounded, size: 18),
+                    label: const Text('复制代码'),
+                  ),
+                ],
+              ),
+            ),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 320),
+              child: SingleChildScrollView(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                    child: Text(
+                      code,
+                      softWrap: false,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontFamily: 'monospace',
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget boardHeader(ForumLink board) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
     child: AppSectionCard(
@@ -600,7 +669,9 @@ class _ForumPageState extends State<ForumPage> {
     dom.Element element,
   ) {
     if (index >= post.images.length) return const SizedBox.shrink();
-    final url = post.images[index];
+    final url = index < post.imagePreviews.length
+        ? post.imagePreviews[index]
+        : post.images[index];
     final uri = Uri.tryParse(url);
     if (uri == null || uri.scheme != 'https' || uri.userInfo.isNotEmpty) {
       return const SizedBox.shrink();
@@ -620,12 +691,20 @@ class _ForumPageState extends State<ForumPage> {
       onTap: () {
         HapticFeedbackUtil.light();
         Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ForumImageGalleryPage(
+          PageRouteBuilder<void>(
+            opaque: false,
+            barrierColor: Colors.black,
+            transitionDuration: const Duration(milliseconds: 330),
+            reverseTransitionDuration: const Duration(milliseconds: 200),
+            pageBuilder: (_, _, _) => ForumImageGalleryPage(
               images: post.images,
+              previews: post.imagePreviews,
               initialIndex: index,
               heroTagPrefix: heroTagPrefix,
+              useLiquidGlass: widget.preferences.liquidGlass,
             ),
+            transitionsBuilder: (_, animation, _, child) =>
+                FadeTransition(opacity: animation, child: child),
           ),
         );
       },
@@ -685,6 +764,63 @@ class _ForumPageState extends State<ForumPage> {
     ),
   );
 
+  Widget _threadAuthorTitle(ForumPost? post) {
+    final author = post?.author.isNotEmpty == true
+        ? post!.author
+        : widget.link.author.isNotEmpty
+        ? widget.link.author
+        : '读取作者信息…';
+    final role = post?.role.isNotEmpty == true ? post!.role : widget.link.role;
+    final date = post?.meta.isNotEmpty == true ? post!.meta : widget.link.date;
+    final profile = post?.profile.isNotEmpty == true
+        ? post!.profile
+        : widget.link.profile;
+    return Row(
+      children: [
+        ForumAvatar(url: post?.avatar ?? widget.link.imageUrl, radius: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: profile.isEmpty ? null : () => openSite(author, profile),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    author,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      if (role.isNotEmpty) ...[
+                        ForumLabel(role),
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(
+                        child: Text(
+                          date.isEmpty ? ' ' : date,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget postCard(ForumPost post, int index) {
     var imageIndex = 0;
     final heroTagPrefix = '${identityHashCode(heroScope)}:${post.id}';
@@ -696,39 +832,41 @@ class _ForumPageState extends State<ForumPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  ForumAvatar(url: post.avatar),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: InkWell(
-                      onTap: post.profile.isEmpty
-                          ? null
-                          : () => openSite(post.author, post.profile),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            post.author,
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          if (post.role.isNotEmpty) ForumLabel(post.role),
-                          if (post.meta.isNotEmpty)
+              if (index > 0) ...[
+                Row(
+                  children: [
+                    ForumAvatar(url: post.avatar),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InkWell(
+                        onTap: post.profile.isEmpty
+                            ? null
+                            : () => openSite(post.author, post.profile),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Text(
-                              post.meta,
-                              style: Theme.of(context).textTheme.bodySmall,
+                              post.author,
+                              style: Theme.of(context).textTheme.titleSmall,
                             ),
-                        ],
+                            if (post.role.isNotEmpty) ForumLabel(post.role),
+                            if (post.meta.isNotEmpty)
+                              Text(
+                                post.meta,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  Text(
-                    index == 0 ? '楼主' : '${index + 1}楼',
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+                    Text(
+                      '${index + 1}楼',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
               SelectionArea(
                 child: SizedBox(
                   width: double.infinity,
@@ -736,7 +874,7 @@ class _ForumPageState extends State<ForumPage> {
                     post.content,
                     baseUrl: forumUri(widget.link.url),
                     textStyle: Theme.of(context).textTheme.bodyLarge
-                        ?.copyWith(height: 1.65),
+                        ?.copyWith(height: 1.5),
                     onTapUrl: (href) async {
                       HapticFeedbackUtil.light();
                       final uri = forumUri(href);
@@ -758,6 +896,11 @@ class _ForumPageState extends State<ForumPage> {
                       return true;
                     },
                     customWidgetBuilder: (element) {
+                      if (element.localName == 'pre' ||
+                          element.classes.contains('blockcode')) {
+                        final code = forumCodeText(element);
+                        if (code.isNotEmpty) return codeBlock(code);
+                      }
                       if (element.localName == 'a' &&
                           element.classes.contains('forum-video')) {
                         final uri = forumUri(element.attributes['href'] ?? '');
@@ -798,6 +941,25 @@ class _ForumPageState extends State<ForumPage> {
                       if (element.localName == 'pre' ||
                           element.classes.contains('blockcode'))
                         'white-space': 'pre-wrap',
+                      if (element.localName == 'p') 'margin': '0 0 12px 0',
+                      if (element.localName == 'ol' ||
+                          element.localName == 'ul') ...{
+                        'margin': '8px 0',
+                        'padding-left': '24px',
+                      },
+                      if (element.localName == 'li') ...{
+                        'margin': '3px 0',
+                        'padding': '0',
+                      },
+                      if (const {
+                        'h1',
+                        'h2',
+                        'h3',
+                        'h4',
+                        'h5',
+                        'h6',
+                      }.contains(element.localName))
+                        'margin': '16px 0 8px 0',
                     },
                   ),
                 ),
@@ -820,6 +982,11 @@ class _ForumPageState extends State<ForumPage> {
   @override
   Widget build(BuildContext context) {
     final regular = links.where((e) => !e.pinned).toList();
+    final textScaler = MediaQuery.textScalerOf(context);
+    final threadToolbarHeight =
+        (textScaler.scale(14) * 1.25 + textScaler.scale(12) * 1.25 + 16)
+            .clamp(64, 120)
+            .toDouble();
     return PopScope(
       canPop: !replyDirty && !replySending,
       onPopInvokedWithResult: (didPop, _) async {
@@ -834,11 +1001,14 @@ class _ForumPageState extends State<ForumPage> {
       child: Scaffold(
         extendBodyBehindAppBar: true,
         appBar: ReviewFrostedAppBar(
-          title: Text(
-            widget.link.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          toolbarHeight: isThread ? threadToolbarHeight : null,
+          title: isThread
+              ? _threadAuthorTitle(posts.isEmpty ? null : posts.first)
+              : Text(
+                  widget.link.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
           actions: [
             IconButton(
               tooltip: '刷新',
@@ -940,9 +1110,9 @@ class _ForumPageState extends State<ForumPage> {
                             ? null
                             : (active) =>
                                   summaryFor(regular[index - 1], active),
-                        onTap: () => openForum(
+                        onTap: (link) => openForum(
                           context,
-                          regular[index - 1],
+                          link,
                           widget.client,
                           widget.preferences,
                         ),
@@ -1014,7 +1184,7 @@ class ThreadTile extends StatefulWidget {
     this.loadSummary,
   });
   final ForumLink link;
-  final VoidCallback onTap;
+  final ValueChanged<ForumLink> onTap;
   final Future<ThreadSummary> Function(bool Function())? loadSummary;
   @override
   State<ThreadTile> createState() => _ThreadTileState();
@@ -1077,7 +1247,16 @@ class _ThreadTileState extends State<ThreadTile> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         InkWell(
-          onTap: widget.onTap,
+          onTap: () => widget.onTap(
+            link.copyWith(
+              author: author.isEmpty ? null : author,
+              role: role,
+              imageUrl: link.imageUrl ?? summary?.avatar,
+              profile: summary?.profile.isNotEmpty == true
+                  ? summary!.profile
+                  : null,
+            ),
+          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
             child: Column(
