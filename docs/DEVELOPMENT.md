@@ -1,10 +1,10 @@
 # MT论坛开发文档
 
-更新：2026-10-28。当前版本：1.0.1+32。主文档同步至 `D:\App\开发文档\MT论坛.md`。
+更新：2026-10-29。当前版本：1.0.1+32。本机开发文档副本与仓库文档同步；本机路径不公开。
 
 ## 用户要求与边界
 - Android 包名 `bbs.binmt.cc`，应用名 MT论坛，仅 ARM64-v8a。
-- BKS 来源 `D:\Download\backup\infinitycm.bks`，密码不写入文档或受版本管理文件。
+- BKS 密钥由本机签名配置读取；签名文件与口令不写入文档或版本控制文件。
 - 网站 https://bbs.binmt.cc/；UI 以本机 Review 当前源码及 M3 UI 复用规范为准。
 - 用户指定启动器图标源文件时，按原始 PNG 字节使用，不裁切或编辑图像；Android 启动器按系统图标位显示。
 - 保留网站权限、验证码、隐藏回复、附件访问限制；不能伪造成功/签到/未读/在线人数。
@@ -44,7 +44,7 @@
 
 ## 来源
 - https://bbs.binmt.cc/ 首页、板块与导读结构（公开网页检索可读，本机直连受阻）。
-- Review：`D:\App\Review\lib\core\theme\app_theme.dart` 与共用组件，保留 MIT 授权 `docs/REVIEW_LICENSE`。
+- Review：复用其主题与共用组件，并保留 MIT 授权 `docs/REVIEW_LICENSE`。
 
 ## 2026-10-25 实施进展与复盘
 - [x] Flutter 工程、`bbs.binmt.cc`、MT论坛、Android 7.0+（minSdk 24），版本 1.0.1+2。
@@ -57,7 +57,7 @@
 - [x] 注册、发帖、回复、消息、个人资料、收藏仍使用同源 WebView；只对当前展示的官网流程做 M3 主题适配，没有声称为完整原生表单。
 - [x] 官网文件上传接系统 ACTION_OPEN_DOCUMENT；无需全盘存储权限。站外主页面交给外部浏览器，由用户确认目的地址；第三方验证 iframe 保留原网站行为。
 - [x] 官网 auth Cookie 改变后清除内存旧账号内容并重新请求；请求代次校验防止旧请求完成后覆盖新账号。Cookie 不落到 SharedPreferences，不写日志；Android 禁止应用备份和明文 HTTP。
-- [x] 初版 icon 来自网站 favicon；用户随后指定以 `D:\Download\图片\icon16.png` 作为启动器图标，现用原始 2048×2048 RGB PNG 字节，未裁切、改色、加边距或重采样。旧站点 favicon 保存在 `build/rollback/site_icon_website_favicon_24x24.png`。
+- [x] 初版 icon 来自网站 favicon；用户随后指定原始图标文件作为启动器图标，现用原始 2048×2048 RGB PNG 字节，未裁切、改色、加边距或重采样。旧站点 favicon 保存在 `build/rollback/site_icon_website_favicon_24x24.png`。
 - [x] 静态分析通过（使用 `dart analyze --format=machine lib test`）；8 项测试通过（含账号切换时旧请求不能回填旧内容）。预览位于 docs/preview-dark.png、docs/preview-light.png，为真实公开首页 fixture 的 Flutter 布局渲染，不是真机截图。
 
 ### 网络与构建错误记录
@@ -81,7 +81,7 @@
 
 
 ## 历史交付核验（2026-10-25，v1.0.1+2）
-- APK：`D:\App\MT论坛\MT论坛_v1.0.1_arm64.apk`，版本 `1.0.1+2`，包名 `bbs.binmt.cc`，应用名 MT论坛，minSdk 24、targetSdk 36。
+- APK：`MT论坛_v1.0.1_arm64.apk`，版本 `1.0.1+2`，包名 `bbs.binmt.cc`，应用名 MT论坛，minSdk 24、targetSdk 36。
 - aapt 与 ZIP 双重检查：仅 `arm64-v8a`。首次中间包曾夹带依赖库额外 ABI，已经在最终包修复；build/rollback 中间包不作为交付。
 - apksigner：Verifies，v2 验证通过；证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`，与指定 BKS 转换出的同一私钥证书一致。
 - zipalign `-c -P 16 4` 退出码 0。
@@ -92,7 +92,7 @@
 
 
 ## 2026-10-25 用户指定图标更新
-- 使用用户提供的 `D:\Download\图片\icon16.png` 覆盖 Android `drawable-nodpi/site_icon.png`。原文件 2048×2048、RGB，源资源复制字节保持一致；Android 打包器对 PNG 编码做了压缩优化，APK 内资源尺寸和像素逐点与原图一致。资源无密度限定，未另行缩放、裁切、换色、加白边或添加自适应图标背景。系统启动器会按自身图标显示区域渲染。
+- 使用用户提供的原始图标覆盖 Android `drawable-nodpi/site_icon.png`。原文件 2048×2048、RGB，源资源复制字节保持一致；Android 打包器对 PNG 编码做了压缩优化，APK 内资源尺寸和像素逐点与原图一致。资源无密度限定，未另行缩放、裁切、换色、加白边或添加自适应图标背景。系统启动器会按自身图标显示区域渲染。
 - 旧 24×24 网站 favicon 已存入 `build/rollback/site_icon_website_favicon_24x24.png` 供回退。
 - 图标更新构建版本升至 1.0.1+2，构建脚本校验版本和输出文件名同步更新。
 - 验收：输入 PNG 与源资源 SHA-256 完全一致；APK 中压缩后的 PNG 解码尺寸与 RGBA 像素逐点一致。签名/包名/版本/ARM64 ABI/对齐记录于 `build/release-verification.json`。
@@ -124,7 +124,7 @@
 - Windows 上 Flutter 的 `.bat` 启动流程在受限目录中未进入 Dart 任务；标准构建脚本现直接调用已安装 SDK 的 `flutter_tools.snapshot`，仍在 ASCII 临时目录复制生产源码、离线解析依赖并构建同一 ARM64 release。调用前需允许 Flutter SDK 写入它自己的 `bin/cache` 锁文件。
 
 ## 历史交付核验（2026-10-25，v1.1.0+3）
-- APK：`D:\App\MT论坛\MT论坛_v1.1.0_arm64.apk`，24,489,892 字节；包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.1.0+3`，minSdk 24、targetSdk 36。
+- APK：`MT论坛_v1.1.0_arm64.apk`，24,489,892 字节；包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.1.0+3`，minSdk 24、targetSdk 36。
 - `aapt` 与 APK ZIP 检查均确认包名/版本和唯一 ABI `arm64-v8a`；`apksigner verify --verbose` 通过 v2 签名；证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`，与指定 BKS 对应证书一致。
 - `zipalign -c -P 16 4` 退出码 0；APK SHA-256 `81e0d3a016699153de7fcfa4e29bae3ef61b17b1d9901965af6cf10f865e1db4`。
 - 用户提供的 icon 与 `drawable-nodpi/site_icon.png` 源资源 SHA-256 一致；保持原 2048×2048 源图，不指定 density，不裁切或重采样。应用图标资源已在 APK manifest 指向 `@drawable/site_icon`。
@@ -143,7 +143,7 @@
 - 既有大字号回归还发现窄胶囊底栏固定高度会使两倍字体溢出；有效 12sp 标签超过 16dp 时自动用标准 M3 NavigationBar，悬浮/玻璃偏好保留，恢复字体大小后恢复对应样式。
 
 ## 历史交付核验（2026-10-25，v1.1.1+4）
-- APK：`D:\App\MT论坛\MT论坛_v1.1.1_arm64.apk`，24,555,428 字节；包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.1.1+4`，minSdk 24、targetSdk 36。
+- APK：`MT论坛_v1.1.1_arm64.apk`，24,555,428 字节；包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.1.1+4`，minSdk 24、targetSdk 36。
 - `dart analyze --format=machine lib test` 无诊断；`tool/build_release.ps1 -RunChecks` 在 ASCII 快照内完成 15 项测试，并成功构建同一生产包名的 ARM64 release。源码、许可证及配置共 26 个文件与构建快照哈希一致。
 - `aapt`/APK ZIP 确认仅 `arm64-v8a`；`apksigner verify --verbose --print-certs` 验证 v2 签名通过，证书 SHA-256 仍为 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`；`zipalign -c -P 16 4` 退出码 0。
 - APK SHA-256：`f1572b72fbc9638d31fd408ae190b07986b28df2eef5048eea7f6a630401a376`。APK 的图标 PNG 字节与已验收上一版相同；未修改用户图标。
@@ -156,10 +156,10 @@
 - 新桥接脚本 `assets/forum-login.js` 按 form hash 从 document 查响应，保留动态令牌与官网 onsubmit；Email 发送 loginfield=email，QQ 通过单独的官方授权界面。登录可抢占已有正文读取，35 秒桥接事务限时、45 秒原生看门狗、取消和请求代次防迟到回调；密码在响应/取消后清除。
 - 用户提供两张尺寸对比图：仅收紧首页，不缩放整个应用或覆盖用户字体偏好。专区图像 46→36dp，网格项上下留白 12→4dp、图文间距 8→4dp；标题改用 titleMedium、网格与快捷标签改用 labelMedium；首页卡片圆角 24→12dp、分区间距 16→8dp，保留上轮加宽底栏。
 - JavaScript 模拟官网表单外响应、Email select 转换、取消清理和站外 action 拦截共 4 项通过；Flutter 的 Email 参数、取消/超时停止转圈、迟到响应、紧凑首页尺寸及既有回归/预览共 20 项通过。静态分析无诊断；板块折叠标题保留至少 48dp 点击高度，缩小视觉元素不缩减此点击区。
-- QQ iframe 所需第三方 Cookie 仅在专用授权视图启用。未提交真实账号或 QQ 授权，未代替用户确认验证码；当前没有实现动态验证码的原生输入，遇到时明确提示限制。核对协议已同步到 `D:\App\开发文档\MT论坛-登录协议核对.md`。
+- QQ iframe 所需第三方 Cookie 仅在专用授权视图启用。未提交真实账号或 QQ 授权，未代替用户确认验证码；当前没有实现动态验证码的原生输入，遇到时明确提示限制。核对协议已同步到 `docs/LOGIN_PROTOCOL.md`。
 
 ## 最终交付核验（2026-10-26，v1.2.0+5）
-- APK：`D:\App\MT论坛\MT论坛_v1.2.0_arm64.apk`，24,557,185 字节；包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.2.0+5`，minSdk 24、targetSdk 36，仅 `arm64-v8a`。
+- APK：`MT论坛_v1.2.0_arm64.apk`，24,557,185 字节；包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.2.0+5`，minSdk 24、targetSdk 36，仅 `arm64-v8a`。
 - 最终 ASCII 构建快照 `mt-forum-release-cf907b34` 与当前源码、资源及配置共 27 个文件哈希一致。重新执行静态分析、4 项生产 JS 桥接检查和该快照内的 20 项 Flutter 测试全部通过；明暗主题图片为自动化 fixture 预览，不是真机截图。
 - `apksigner verify --verbose --print-certs` 通过 v2 签名；证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`。`zipalign -c -P 16 4` 通过；aapt 与 ZIP 均确认包名、版本和单一 ARM64 架构。
 - APK SHA-256：`e55035c9b880a116bcfe30b0b773fbbd0bca81176486a5ece1142b678463f036`。用户原图资源及 APK 图标 PNG 哈希均与上一版一致，没有缩放图标源文件。
@@ -187,7 +187,7 @@
 - 官网游客会话再次核对发现“立即注册”的真实地址为 member.php?mod=register213，不能硬编码 mod=register；当前原生注册页会先读取现行官网登录页的同源注册链接。实际注册表单含邀请码以及随机字段名，显示标签从官网 label/for 读取，原样提交字段名；保留获取邀请码/协议等链接为原生按钮。未创建账户或提交注册。
 
 ## 最终交付核验（2026-10-26，v1.3.0+7）
-- APK：`D:\App\MT论坛\MT论坛_v1.3.0_arm64.apk`，24,753,897 字节；包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.3.0+7`，minSdk 24、targetSdk 36，仅 `arm64-v8a`。
+- APK：`MT论坛_v1.3.0_arm64.apk`，24,753,897 字节；包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.3.0+7`，minSdk 24、targetSdk 36，仅 `arm64-v8a`。
 - 当前 `lib`、`assets`、配置与 ASCII 构建目录 `mt-forum-release-8a1648cf` 共 29 个文件 SHA-256 相同；Android `MainActivity.kt` 的会话写回代码也单独匹配。静态分析无诊断，最终快照内 42 项 Flutter 检查与生产 JS 登录资产的 4 项检查全部通过。
 - `apksigner verify --verbose --print-certs` 通过 v2；签名证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`。aapt/ZIP 确认包名、版本和单一 ARM64；`zipalign -c -P 16 4` 通过。APK 图标资源哈希与原图已核验版本一致，未调整用户的应用图标。
 - APK SHA-256：`2d5bb6f2f641dea3d19ce1a71cf997484f1c1cea93c8a941aced451a978a24c3`。根目录只保留此最终包；1.2.0、未交付 1.2.1 和注册修正前的 1.3.0 中间包都在 `build/rollback` 保留，旧核验记录另存。
@@ -203,7 +203,7 @@
 - 修复还阻止已取消请求在退出后写回 Cookie 或转入旧页面读取后备，避免旧会话恢复。回归、布局预览和同签名 ARM64 APK 核验已完成，结果见下方；使用完整缓存的离线 Gradle，避免上轮仓库 TLS 等待。
 
 ## 最终交付核验（2026-10-26，v1.3.1+8）
-- APK：`D:\App\MT论坛\MT论坛_v1.3.1_arm64.apk`，24,753,933 字节；包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.3.1+8`，minSdk 24、targetSdk 36，仅 `arm64-v8a`。
+- APK：`MT论坛_v1.3.1_arm64.apk`，24,753,933 字节；包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.3.1+8`，minSdk 24、targetSdk 36，仅 `arm64-v8a`。
 - 48 项 Flutter 回归及 4 项生产 JS 登录桥接检查通过，覆盖真实结构的合成资料解析、空资料错误、加载失败仍可退出、取消退出保留会话、退出取消旧请求、旧页面内容失效。静态分析无错误或警告，保留一项花括号样式 info。日志见 `build/account-final-tests.log`；账号明暗预览为合成 fixture，不能当作真机视觉验收。
 - 回归中发现退出确认框前启动无限进度动画会使等待界面稳定的测试超时；已改为确认后才启动退出进度，取消确认不触发会话清理。以后不能只验证路由类名，账号页必须断言昵称、UID、错误重试与退出按钮。
 - 最终 ASCII 构建目录的 lib/assets/配置共 30 个文件与工程哈希一致，Android MainActivity.kt 单独核对一致；完整依赖缓存离线 Gradle 构建成功，耗时 30 秒，日志 `build/account-final-build.log`。
@@ -220,7 +220,7 @@
 - 新增当前模板合成 fixture、详情可见/分页、顶部昵称 UID/去重、退出后迟到身份检查；最终 51 项 Flutter 检查通过，明暗布局预览已核对；同签名 ARM64 APK 结果见下方。
 
 ## 最终交付核验（2026-10-26，v1.3.2+9）
-- APK：`D:\App\MT论坛\MT论坛_v1.3.2_arm64.apk`，24,753,781 字节；包名 bbs.binmt.cc，应用名 MT论坛，版本 1.3.2+9；minSdk 24、targetSdk 36，仅 arm64-v8a。
+- APK：`MT论坛_v1.3.2_arm64.apk`，24,753,781 字节；包名 bbs.binmt.cc，应用名 MT论坛，版本 1.3.2+9；minSdk 24、targetSdk 36，仅 arm64-v8a。
 - SHA-256：`fbdd3fe1b98b3194d131410ff5df0bab465438b6abadbb84e1c7a0386be0e297`。v2 签名通过，证书仍为 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`；aapt/ZIP 包身份及单 ABI 校验通过，zipalign 16KB 校验通过。图标编译资源哈希保持原值。
 - 51 项 Flutter 回归及 4 项生产 JS 登录检查通过，静态分析无错误/警告，仅既有一项花括号样式 info；测试日志 build/profile-board-tests.log。源码、资源、fixture 与配置 36 个文件和 ASCII 构建目录哈希匹配，Android MainActivity.kt 另外匹配；本次离线构建耗时 1 分 34 秒，日志 build/profile-board-build.log。
 - 首页账号与板块明暗 fixture 预览：docs/preview-profile-dark.png、preview-profile-light.png、preview-board-dark.png、preview-board-light.png。使用合成身份和列表，不含真实账号数据；测试字体有部分缺字，不作为真机字体或图片加载验收。
@@ -234,11 +234,11 @@
 - 避免复发：共享列表模型或组件变化时，检索首页热帖、首页最新、板块及导读所有调用点；不能以板块预览通过替代首页可见内容验收。APK 与最终验证已完成，见下方。
 
 ## 最终交付核验（2026-10-26，v1.3.3+10）
-- APK：`D:\App\MT论坛\MT论坛_v1.3.3_arm64.apk`，24,753,781 字节，包名 bbs.binmt.cc、版本 1.3.3+10，仅 arm64-v8a；SHA-256 `628fe4cc51847a49d84ddd9e1864f7bcd79ea1cadb30a42b1f4965d40ba6c27d`。
+- APK：`MT论坛_v1.3.3_arm64.apk`，24,753,781 字节，包名 bbs.binmt.cc、版本 1.3.3+10，仅 arm64-v8a；SHA-256 `628fe4cc51847a49d84ddd9e1864f7bcd79ea1cadb30a42b1f4965d40ba6c27d`。
 - 54 项 Flutter 回归及 4 项生产 JS 检查通过。静态分析无错误/警告，仅既有 native_forum_page.dart 花括号样式 info。源码/资源/fixture/配置 37 个文件和构建快照哈希一致，Android 源码单独匹配；离线构建 49 秒成功，日志 build/home-feed-tests.log、home-feed-build.log。
 - aapt 核对包名、版本；ZIP 核对单 ABI；apksigner v2 和 zipalign 16KB 校验通过；原证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975` 与应用图标资源哈希不变。
 - 首页排行榜和最新帖子的明暗 fixture 预览已生成并核对：docs/preview-ranking-dark.png、preview-ranking-light.png、preview-latest-dark.png、preview-latest-light.png；截图为合成数据与测试字体，不作为真机图片加载验收。
-- 1.3.2 包与核验/签名记录归档 build/rollback，根目录仅新包；当前源码和工具归档 build/source-snapshots/v1.3.3，不含签名口令。主开发文档和入口审计同步到 D:\App\开发文档。
+- 1.3.2 包与核验/签名记录归档 build/rollback，根目录仅新包；当前源码和工具归档 build/source-snapshots/v1.3.3，不含签名口令。主开发文档和入口审计已同步至本机副本。
 - 未在设备安装或执行真实登录等写操作。头像 CDN 加载和实际网络下的导读补充仍需真机验收；官网未返回正文摘要时不会虚构摘要。
 ## 2026-10-26 通用网页内容排版复盘与原生页面整理（1.3.4+11）
 - 用户指出签到、消息、回复等页面只是把网页内容塞进原生容器，仍混有网页列表、下划线链接、CSS 图片数字和大量空白。上一轮“无可见 WebView”的检查只能证明渲染路径，不能证明已完成原生信息架构；以后必须核对各入口的可见排版、动作和状态。
@@ -249,11 +249,11 @@
 - 新增签到语义与请求、成功/失败/大字号、消息导航空状态以及引用回复保留/移除相关回归；明暗签到/消息/引用预览纳入发布检查。原附件上传和复杂脚本验证码边界仍在；非空私信会话和每个插件的所有布局不能仅凭通用控件宣称完成验收。
 
 ## 最终交付核验（2026-10-26，v1.3.4+11）
-- APK：`D:\App\MT论坛\MT论坛_v1.3.4_arm64.apk`，24,884,869 字节；bbs.binmt.cc，1.3.4+11，minSdk 24、targetSdk 36，仅 arm64-v8a。SHA-256 `bd735f0e2b65feef5f53833cce790732eabceadf38bac88ef0759b81d4be10f9`。
+- APK：`MT论坛_v1.3.4_arm64.apk`，24,884,869 字节；bbs.binmt.cc，1.3.4+11，minSdk 24、targetSdk 36，仅 arm64-v8a。SHA-256 `bd735f0e2b65feef5f53833cce790732eabceadf38bac88ef0759b81d4be10f9`。
 - 最终 60 项 Flutter 回归与 4 项生产 JS 登录检查通过；静态分析无诊断。最终预览又发现消息空卡宽度和分类层级不足，修正为通栏卡、带选中状态的分段导航及独立主操作，并重新验证。日志 build/native-layout-tests.log，离线 Gradle 构建 44 秒，日志 build/native-layout-build.log。
 - 最终 lib/assets/test/配置与 ASCII 构建快照一致，Android MainActivity.kt 另外一致。aapt、APK ZIP、apksigner v2、zipalign 16KB 全部通过。证书仍为 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`，用户图标资源哈希未变。
 - 签到、消息、引用回复的明暗 fixture 布局预览已逐张检查：docs/preview-sign-*.png、preview-messages-*.png、preview-quote-*.png；含合成状态及测试字体，部分测试字形缺失，不能代替真机字体/图片加载验收。360dp 双倍字体的签到与消息无布局溢出。
-- 1.3.3 APK 和核验/签名记录归档 build/rollback；根目录只保留本版。源码和工具快照 build/source-snapshots/v1.3.4，不含签名口令；发布脚本已同步版本和预览清单。主文档与入口审计同步 D:\App\开发文档。
+- 1.3.3 APK 和核验/签名记录归档 build/rollback；根目录只保留本版。源码和工具快照 build/source-snapshots/v1.3.4，不含签名口令；发布脚本已同步版本和预览清单。主文档与入口审计已同步至本机副本。
 - 未连接手机安装；未执行真实私信、回复或签到。已只读核对官网签到与消息空页，非空真实私信会话、未识别的不规则插件表格仍需逐页设备验收，不以此次通用排版转换宣称全站布局完成。未知表格保留原内容而不丢信息，附件上传和复杂验证码限制不变。
 ## 2026-10-26 帖子列表、快捷回复、收藏与历史（1.4.0+12）
 - 用户要求帖子作者头像和论坛默认头像正确展示；回复不再跳转单独页面，而在帖子底部展开工具栏/输入/发送；板块对齐参考图的信息密度、小红色置顶标记、摘要与身份等信息。
@@ -274,7 +274,7 @@
 - aapt 包信息、apksigner v2、证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975` 和 16KB zipalign 全通过。原 icon16.png 源及 APK 原编译图标资源哈希不变；论坛默认头像 GIF 资源与项目原文件哈希一致。
 - 同步源码静态分析无诊断，71 项 Flutter 自动化及 4 项生产登录 JS 检查通过。Gradle 离线 ARM64 release 构建成功，耗时约 1 分 10 秒。日志：build/thread-collection-final-tests.log、build/thread-collection-final-build.log；核验清单：build/release-verification.json。
 - 已逐张检查版块、帖子、快捷回复、收藏、历史明暗预览：docs/preview-board-*.png、preview-thread-*.png、preview-composer-*.png、preview-favorites-*.png、preview-history-*.png。预览为合成账号内容；字体缺失的图只作为几何检查，不能替代手机字体与 CDN 实际加载验证。
-- 回退 APK `build/rollback/MT论坛_v1.3.4_arm64.apk` 保留并核对原 SHA-256；稳定源码快照 `build/source-snapshots/v1.4.0` 与参与构建源码一致，不含本地签名口令。根目录仅保留最新 APK。开发文档与原生入口审计同步至 D:\App\开发文档。
+- 回退 APK `build/rollback/MT论坛_v1.3.4_arm64.apk` 保留并核对原 SHA-256；稳定源码快照 `build/source-snapshots/v1.4.0` 与参与构建源码一致，不含本地签名口令。根目录仅保留最新 APK。开发文档与原生入口审计已同步至本机副本。
 - 未安装到手机，未提交真实收藏删除、登录、发帖、回复或签到请求；收藏写操作目前由动态表单 fixture 验证，真实账号网络验收仍待用户设备完成。快捷回复工具支持插入 HTTPS 网络图片地址，本地文件上传尚未实现。
 ## 2026-10-27 悬浮底栏重复点击动效（1.4.1+13）
 - 用户反馈点击底栏先出现目标位置的点击态，再出现胶囊移动，要求只保留原胶囊位移。根因是普通悬浮项 InkWell 继承全局水波纹和按压高亮，同时 AnimatedSlide 自己移动；Review 同款组件已明确将 splash/highlight 设为透明。
@@ -282,7 +282,7 @@
 - 液态玻璃底栏使用 GlassInteractionBehavior.none 去掉按压发光和缩放；底层 TabIndicator 还会按下时启用厚度/果冻形变，因此设置 indicatorPinchStrength=0 抑制点击的额外形变，保留指示器移动。拖动手势仍由组件原有逻辑处理。
 - 静态分析无诊断，21 项 widget 检查通过，覆盖按住时胶囊不提前跳动、释放后中间与终点位移、玻璃参数和标准底栏 pressed/focus 状态，且覆盖现有导航、登录和大字号。真机触感及液态玻璃渲染还需设备验收。
 ## 最终交付核验（2026-10-27，v1.4.1+13）
-- APK：`D:\App\MT论坛\MT论坛_v1.4.1_arm64.apk`，25,020,552 字节，包名 bbs.binmt.cc，版本 1.4.1+13，仅 arm64-v8a；SHA-256 `4db23cfcd80a5c63b6c6f65847ba6da9947d0f593971e9b50a97102b7fd99d18`。
+- APK：`MT论坛_v1.4.1_arm64.apk`，25,020,552 字节，包名 bbs.binmt.cc，版本 1.4.1+13，仅 arm64-v8a；SHA-256 `4db23cfcd80a5c63b6c6f65847ba6da9947d0f593971e9b50a97102b7fd99d18`。
 - aapt 包信息、apksigner v2、证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`、16KB zipalign 和原图标资源哈希均通过；离线构建 1 分 17 秒。静态分析无诊断，21 项 widget 回归通过；日志 build/navigation-motion-tests.log、build/navigation-motion-build.log。
 - 1.4.0 APK、核验和签名记录归档 build/rollback，并验证旧包 SHA-256；本版不含签名口令的源码快照 build/source-snapshots/v1.4.1 已保存，项目 lib/assets/test/pubspec 与实际构建快照一致。
 - 未安装到手机；普通/液态玻璃底栏的触感、视觉效果及设备帧率尚需真机验收。标准底栏只关闭按压态，键盘焦点状态保持主题默认处理。
@@ -292,7 +292,7 @@
 - 按返回键从消息标签回首页；如果页面有未提交编辑内容先确认，提交中不丢失状态。账号变化更换页面 key 并隔离旧请求，避免旧账号消息覆盖当前账号。触感、底栏胶囊的原有移动及 1.4.1 去除水波纹行为保留。
 - 已核对消息标签明暗合成预览 docs/preview-messages-tab-dark.png、preview-messages-tab-light.png；76 项 Flutter 回归和 4 项登录桥接检查通过，覆盖访客、原生登录成功/取消、底栏及顶栏入口、分类原位切换、标签返回/状态保留和账号切换迟到请求。实际非空消息、真实登录及设备动画仍需真机验证。
 ## 最终交付核验（2026-10-27，v1.4.2+14）
-- APK：`D:\App\MT论坛\MT论坛_v1.4.2_arm64.apk`，25,020,552 字节，包名 bbs.binmt.cc，版本 1.4.2+14，仅 arm64-v8a；SHA-256 `8d543d86d1c77762c6c4309f391b78206f4a55d3eb7ff3075b84dcb1592df664`。
+- APK：`MT论坛_v1.4.2_arm64.apk`，25,020,552 字节，包名 bbs.binmt.cc，版本 1.4.2+14，仅 arm64-v8a；SHA-256 `8d543d86d1c77762c6c4309f391b78206f4a55d3eb7ff3075b84dcb1592df664`。
 - aapt 包信息、apksigner v2、证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`、16KB zipalign 和原图标资源哈希均通过；离线构建 48 秒。静态分析无诊断，76 项 Flutter 回归与 4 项登录桥接检查通过；日志 build/messages-tab-tests.log、build/messages-tab-build.log。
 - 1.4.1 APK、核验及签名记录归档 build/rollback 并验证旧包哈希；本版不含签名口令的源码快照 build/source-snapshots/v1.4.2 已保存，项目 lib/assets/test/pubspec 与实际构建快照一致。
 - 未安装到手机，也未进行真实账号登录或真实消息收发；消息标签明暗预览和测试使用合成数据，真机效果及真实非空消息仍需验收。
@@ -304,7 +304,7 @@
 - 静态分析无诊断；77 项 Flutter 测试及 4 项官网登录 JS 检查通过。Flutter CLI 首次触发的在线 Gradle 构建卡在 Maven TLS 握手，取消后按项目离线流程使用缓存构建成功，日志分别在 `build/message-top-tabs-online-attempt.log` 与 `build/message-top-tabs-build.log`。
 
 ## 最终交付核验（2026-10-27，v1.5.0+15）
-- APK：`D:\App\MT论坛\MT论坛_v1.5.0_arm64.apk`，25,086,088 字节，包名 `bbs.binmt.cc`，版本 `1.5.0+15`，应用名 MT论坛，仅 `arm64-v8a`；SHA-256 `6c899af6de720d03be13d48f71cfa3efff453f4f02d0ff7c83ba60907e5a1229`。
+- APK：`MT论坛_v1.5.0_arm64.apk`，25,086,088 字节，包名 `bbs.binmt.cc`，版本 `1.5.0+15`，应用名 MT论坛，仅 `arm64-v8a`；SHA-256 `6c899af6de720d03be13d48f71cfa3efff453f4f02d0ff7c83ba60907e5a1229`。
 - aapt 包/应用名和版本、apksigner v2 证书摘要 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`、16KB zipalign 及 APK 图标资源哈希 `6cc19ee2603f723038dc8771b389f86da56ce0791ae1af765c754c2adc4044a1` 均核验通过。清单见 `build/release-verification.json`；签名详情见 `build/final-apk-signature.txt`。
 - v1.4.2 APK 已归档为 `build/rollback/MT论坛_v1.4.2_arm64.apk` 并核对旧哈希 `8d543d86d1c77762c6c4309f391b78206f4a55d3eb7ff3075b84dcb1592df664`。v1.5.0 源码快照 `build/source-snapshots/v1.5.0` 不含本机签名配置；根目录仅保留当前版本 APK。
 - 尚未安装到手机。测试与预览用合成消息数据；真实登录账号下各分类实际二级项和设备字体/磨砂观感仍需在论坛可访问的设备上确认。离线 release 编译和安装包签名已完成。
@@ -317,7 +317,7 @@
 - 修复离线发布脚本遗漏：直接调用 Gradle 时必须同步临时 Android `local.properties` 的版本名和版本号；只更新 Dart defines 不能保证 APK manifest 版本正确。旧 BKS 对应签名保持不变。
 
 ## 最终交付核验（2026-10-27，v1.5.1+16）
-- APK：`D:\App\MT论坛\MT论坛_v1.5.1_arm64.apk`，25,086,092 字节，包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.5.1+16`，仅 `arm64-v8a`；SHA-256 `162b24e7b64b1b5418aeba19b54cc7ca15219856b9ec86706a45cfa34ec9471f`。
+- APK：`MT论坛_v1.5.1_arm64.apk`，25,086,092 字节，包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.5.1+16`，仅 `arm64-v8a`；SHA-256 `162b24e7b64b1b5418aeba19b54cc7ca15219856b9ec86706a45cfa34ec9471f`。
 - 离线 Gradle release 成功；aapt、apksigner v2、既有证书摘要 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`、16KB zipalign、原图标资源哈希均通过。日志 `build/message-overflow-build.log`、`build/message-overflow-tests.log`、`build/message-overflow-preview.log`；核验清单 `build/release-verification.json`。
 - v1.5.0 APK 和核验记录已归档 `build/rollback` 并核对 SHA-256 `6c899af6de720d03be13d48f71cfa3efff453f4f02d0ff7c83ba60907e5a1229`；源码快照 `build/source-snapshots/v1.5.1` 不包含本机签名配置。根目录仅保留新 APK。
 - ADB 未发现连接设备，未安装或在真实论坛账号下验收；二级分类实际返回及 Android 设备字体、顶栏滑动效果仍需复核。
@@ -329,21 +329,21 @@
 - 77 项论坛、通知、原生帖子与 Widget 检查通过，含 `ptid`、仅 `pid`、未知入口返回帖子三种合成路径，检查原生头像/帖子与回复编号；静态分析无诊断。真实消息 URL、用户账号权限与回复楼层定位仍需设备验收。
 
 ## 最终交付核验（2026-10-27，v1.5.2+17）
-- APK：`D:\App\MT论坛\MT论坛_v1.5.2_arm64.apk`，25,086,088 字节，包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.5.2+17`，仅 `arm64-v8a`；SHA-256 `1a9ee4cf36ab8006c59dbf31e336f303834d1bf5bf2141254d82e78f4f9db9b7`。
+- APK：`MT论坛_v1.5.2_arm64.apk`，25,086,088 字节，包名 `bbs.binmt.cc`，应用名 MT论坛，版本 `1.5.2+17`，仅 `arm64-v8a`；SHA-256 `1a9ee4cf36ab8006c59dbf31e336f303834d1bf5bf2141254d82e78f4f9db9b7`。
 - 离线 Gradle 构建成功；aapt、apksigner v2、既有签名证书 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`、16KB zipalign 与原图标资源哈希通过。日志 `build/notice-thread-build.log`、`build/notice-thread-tests.log`、`build/notice-thread-analyze.log`；核验清单 `build/release-verification.json`。
 - v1.5.1 APK、签名和核验记录归档 `build/rollback`，旧包 SHA-256 `162b24e7b64b1b5418aeba19b54cc7ca15219856b9ec86706a45cfa34ec9471f`；源码快照 `build/source-snapshots/v1.5.2` 不含签名配置。未安装到设备或访问真实通知内容。
 ## 2026-10-27 帖子正文换行首次尝试（1.5.3，真机确认无效）
 - 初次尝试在 ForumPage.customStylesBuilder 覆盖 white-space:nowrap，但真机上同一条通知回复仍被裁切。复查 flutter_widget_from_html_core 发现该回调先于元素自带的行内样式应用，因此原样式会把覆盖值盖回去；此版不能视为修复完成。
-- 发布脚本曾因继承到 JDK 26.0.1 而在 Android JDK 镜像转换阶段失败。现在脚本选择已安装的 D:\jdk17（17.0.12），并在结束时恢复调用环境原 JAVA_HOME，避免同类构建错误复发。
-- 发布 APK：D:\App\MT论坛\MT论坛_v1.5.3_arm64.apk，25,086,088 字节；包名 bbs.binmt.cc，版本 1.5.3+18，仅 arm64-v8a。SHA-256：60b08e12371f5ea17c8868fed9609dba6090daa9f6dfb0a825d88dd42bae7f7f。
+- 发布脚本曾因继承到 JDK 26.0.1 而在 Android JDK 镜像转换阶段失败。现在脚本固定使用 JDK 17（17.0.12），并在结束时恢复调用环境原 JAVA_HOME，避免同类构建错误复发。
+- 发布 APK：MT论坛_v1.5.3_arm64.apk，25,086,088 字节；包名 bbs.binmt.cc，版本 1.5.3+18，仅 arm64-v8a。SHA-256：60b08e12371f5ea17c8868fed9609dba6090daa9f6dfb0a825d88dd42bae7f7f。
 - aapt 包名/应用名/版本、apksigner v2 证书摘要 3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975、16KB zipalign、ARM64-only ABI 与原始 icon 资源哈希均通过。核验清单 build/release-verification.json，签名记录 build/final-apk-signature.txt，构建摘要 build/post-content-wrap-build.log。
 - 1.5.2 APK 和版本核验/签名记录已备份至 build/rollback；旧 APK 哈希已核对。源码快照 build/source-snapshots/v1.5.3 不包含签名配置，编译临时源 lib/assets/packages 与项目源码哈希一致。
 - 已在连接设备安装并打开 v1.5.3，UIAutomator 和屏幕截图都确认目标消息仍是一行并被卡片裁切。测试套件和 dart analyze 未运行；核验记录已移入 build/rollback/v1.5.3-release-verification.json。
 
 ## 2026-10-27 帖子正文强制换行（1.5.4+19）
 - 修复移到 parseForum：把正文内的 white-space:nowrap 改为 white-space:normal，移除 nowrap 属性，并为 nobr 元素添加正常换行样式；链接仍允许在必要时断开，pre/blockcode 保留预格式文本。帖子详情和通知进入帖子详情共用 ForumPost 与 ForumPage，修复覆盖所有楼层。
-- APK：D:\App\MT论坛\MT论坛_v1.5.4_arm64.apk，25,086,088 字节；包名 bbs.binmt.cc，版本 1.5.4+19，仅 arm64-v8a。SHA-256：b25b6161afa25b2b2a4d925d5d864f350d523a97d4165dd712f1f69dfb69ca88。
-- aapt 包信息、应用名、apksigner v2 证书、16KB zipalign、arm64-only ABI 和原始图标资源哈希均已核对；摘要 build/post-content-wrap-v1.5.4-build.log，清单 build/release-verification.json，签名记录 build/final-apk-signature.txt。JDK 26 导致的首次构建失败已在 v1.5.3 修复的发布脚本中处理：使用 D:\jdk17 并恢复调用环境。
+- APK：MT论坛_v1.5.4_arm64.apk，25,086,088 字节；包名 bbs.binmt.cc，版本 1.5.4+19，仅 arm64-v8a。SHA-256：b25b6161afa25b2b2a4d925d5d864f350d523a97d4165dd712f1f69dfb69ca88。
+- aapt 包信息、应用名、apksigner v2 证书、16KB zipalign、arm64-only ABI 和原始图标资源哈希均已核对；摘要 build/post-content-wrap-v1.5.4-build.log，清单 build/release-verification.json，签名记录 build/final-apk-signature.txt。JDK 26 导致的首次构建失败已在 v1.5.3 修复的发布脚本中处理：使用 JDK 17 并恢复调用环境。
 - v1.5.3 APK、核验记录和签名记录已归档至 build/rollback；v1.5.4 源码快照 build/source-snapshots/v1.5.4 不含签名文件，lib/assets/packages 和编译临时源哈希一致。根目录只保留 v1.5.4 APK。
 - 1 项针对 nowrap 正文的 Flutter Widget 回归检查通过，验证窄屏帖卡正文实际换成多行；完整测试套件和 dart analyze 未运行。v1.5.4 安装更新被 Android 拒绝（INSTALL_FAILED_ABORTED: User rejected permissions），设备仍保留 v1.5.3，因此新包断行效果未在设备确认。
 ## 2026-10-27 帖子边界、筛选设置和通知卡片（1.5.5+20）
@@ -351,7 +351,7 @@
 - 通知使用专用卡片：正文保留时间、用户和通知内容，只剥离正文中的“屏蔽”“查看”操作文字，操作区只呈现官网给出的这两个链接。我的帖子、坛友互动、系统提醒和应用提醒均覆盖同一解析路径；私人消息沿用原来的会话处理。四类回归使用合成数据，尚未逐类获取真实账号通知验收。
 - 筛选设置从同源官网响应提取顶部标签，放入 Review 磨砂顶栏，切换在当前页面完成；未保存时先确认。按官网表格分组渲染规则、说明、复选项及对应保存按钮，直接读取 label 或表格行标题，保留隐藏令牌、原字段和值。有关结构参考 Discuz 默认模板：https://gitlab.rails365.net/hfpp2012/docker-for-discuz/blob/master/discuz/html/template/default/home/spacecp_privacy.htm 和 https://gitlab.rails365.net/hfpp2012/docker-for-discuz/blob/master/discuz/html/template/default/home/space_notice.htm；这些模板不代表已验证本站全部真实页面。
 - 74 项相关 Flutter 检查通过，包括四类通知、筛选表单值与令牌、取消切换、360dp 双倍字号和磨砂分界、帖子固定宽度及布局表格；dart analyze lib 和 dart analyze test 无诊断。完整仓库分析还报告液态玻璃第三方包既有的提示级诊断，本次未改该包。
-- APK：D:\App\MT论坛\MT论坛_v1.5.5_arm64.apk；25,086,084 字节；包名 bbs.binmt.cc，版本 1.5.5+20，minSdk 24、targetSdk 36，仅 arm64-v8a。SHA-256：08b7171fa56b3f167b5849eb710c3ba0b7275dbf0219e754a050ae193f815cc3。
+- APK：MT论坛_v1.5.5_arm64.apk；25,086,084 字节；包名 bbs.binmt.cc，版本 1.5.5+20，minSdk 24、targetSdk 36，仅 arm64-v8a。SHA-256：08b7171fa56b3f167b5849eb710c3ba0b7275dbf0219e754a050ae193f815cc3。
 - aapt 包信息、apksigner v2 既有证书、原 icon 资源哈希和 16KB 对齐已核验。日志 build/message-layout-v1.5.5-tests.log、build/message-layout-v1.5.5-privacy-tests.log、build/message-layout-v1.5.5-analyze.log 和 build/message-layout-v1.5.5-build.log；核验清单 build/release-verification.json。
 - v1.5.4 APK、签名和核验记录归档 build/rollback，已校验旧包哈希；无签名材料的源码快照为 build/source-snapshots/v1.5.5，正式编译用 lib/assets/packages 与项目哈希一致。设备当前安装 v1.5.4，本轮未安装 v1.5.5；新包真实通知、复杂正文和筛选保存仍需设备验证，未执行真实屏蔽或保存操作。
 
@@ -359,7 +359,7 @@
 - 用户要求应用版本名恢复为 1.0.0。pubspec、关于页和发布脚本校验/文件名已同步；Android versionCode 保持 20，允许覆盖此前已安装的低 versionCode 构建。
 - 历史 v1.5.x 记录不改写；本次只改变版本名，不代表功能源码回退。
 
-- 版本名回退正式包：D:\App\MT论坛\MT论坛_v1.0.0_arm64.apk，25086084 字节，版本 1.0.0+20，包名 bbs.binmt.cc，仅 arm64-v8a，SHA-256 c6e4e12aec7fef1e8390791e7f5bdf5da6474bd4a43545b8ad10a3b0c1ea2735。BUILD SUCCESSFUL；aapt、apksigner v2 和 zipalign 16KB 核验通过。只对版本元数据重新构建，未重跑 Flutter 测试/分析，未安装到设备。旧 v1.5.5 包及核验记录保存于 build/rollback。
+- 版本名回退正式包：MT论坛_v1.0.0_arm64.apk，25086084 字节，版本 1.0.0+20，包名 bbs.binmt.cc，仅 arm64-v8a，SHA-256 c6e4e12aec7fef1e8390791e7f5bdf5da6474bd4a43545b8ad10a3b0c1ea2735。BUILD SUCCESSFUL；aapt、apksigner v2 和 zipalign 16KB 核验通过。只对版本元数据重新构建，未重跑 Flutter 测试/分析，未安装到设备。旧 v1.5.5 包及核验记录保存于 build/rollback。
 
 ## 2026-10-28 搜索原生列表与首页连续加载（1.0.0+21）
 - 搜索请求此前先展示了用于取得动态搜索令牌的首页 HTML，再把搜索结果交给通用 HTML 渲染器。现在取得表单和提交期间不设置可见 document；结果原位使用 ForumPage/ThreadTile，保持同一路由，解析作者、头像、摘要、回复/浏览及日期，使用官网下一页地址。
@@ -455,3 +455,7 @@
 - `thread_ui_test.dart` 的 14 项帖子/播放器/回复专项测试通过；改动的 3 个 Dart 文件 analyze 无诊断。回归覆盖 Discuz 合成代码块卡片、换行和精确写入剪贴板。
 - 正式 ARM64 APK：`MT论坛_v1.0.1_arm64.apk`，25,217,420 字节，SHA-256 `487F5D5C8A6F8B1F9AB57C42B9122C60C339CEE59A000772807576D724CE7C41`；aapt 核实 `bbs.binmt.cc` / `1.0.1+32` / MT论坛，ZIP 仅含 `arm64-v8a`，V2 签名证书 SHA-256 `3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975`，16KB zipalign 通过。记录见 `build/release-verification-code32.json`、`build/final-apk-signature-code32.txt` 和 `build/markdown-codeblock-build.log`。
 - code31 回退包 `build/rollback/MT论坛_v1.0.0_code31_arm64.apk` 的 SHA-256 与原包一致：`AD34AC54E3D7BCEAAD6E92E5E82BCDB45F3B03C467CD39F90458040699CAF160`；本版源码快照 `build/source-snapshots/v1.0.1+32`。未安装真机；目标网站在本机返回反爬验证页，设备上的真实帖子排版尚待验收。
+
+## 2026-10-29 README 与公开文档隐私整理
+- README 已改为分区说明，移除本机开发文档副本和 SDK 安装路径；公开 Markdown 中的 BKS、下载目录、Review 源码和项目绝对路径统一改为通用描述或仓库相对路径。
+- 此次只改文档，不改变应用源码、版本号或 APK。
