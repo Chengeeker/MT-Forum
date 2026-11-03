@@ -8,6 +8,10 @@ import 'forum.dart';
 
 class Preferences extends ChangeNotifier {
   Preferences(this.store) {
+    reload(notify: false);
+  }
+
+  void reload({bool notify = true}) {
     mode = ThemeMode.values[(store.getInt('themeMode') ?? 0).clamp(0, 2)];
     color = (store.getInt('color') ?? 2).clamp(0, 7);
     pureBlack = store.getBool('pureBlack') ?? false;
@@ -20,6 +24,7 @@ class Preferences extends ChangeNotifier {
         ? savedWeight
         : 0;
     haptics = store.getBool('haptics') ?? true;
+    autoSignIn = store.getBool('autoSignIn') ?? false;
     HapticFeedbackUtil.isEnabled = haptics;
     try {
       history = (jsonDecode(store.getString('history') ?? '[]') as List)
@@ -30,7 +35,9 @@ class Preferences extends ChangeNotifier {
     } catch (_) {
       history = [];
     }
+    if (notify) notifyListeners();
   }
+
   final SharedPreferences store;
   ThemeMode mode = ThemeMode.system;
   int color = 2;
@@ -40,6 +47,7 @@ class Preferences extends ChangeNotifier {
       liquidGlass = false,
       haptics = true;
   double textScale = 1;
+  bool autoSignIn = false;
   int fontWeightAdjustment = 0;
   static const fontWeightAdjustments = [-100, 0, 100, 200, 300];
   List<ForumLink> history = [];
@@ -56,6 +64,7 @@ class Preferences extends ChangeNotifier {
       store.setDouble('textScale', textScale),
       store.setInt('fontWeightAdjustment', fontWeightAdjustment),
       store.setBool('haptics', haptics),
+      store.setBool('autoSignIn', autoSignIn),
     ]);
   }
 

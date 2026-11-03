@@ -399,7 +399,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('液态玻璃与标准底栏不叠加按压视觉反馈', (tester) async {
+  testWidgets('液态底栏复用Review手势参数，标准底栏保持无水波纹', (tester) async {
     final settings = await prefs();
     settings.liquidGlass = true;
     await tester.pumpWidget(
@@ -412,7 +412,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widget<GlassTabBar>(find.byType(GlassTabBar)).interactionBehavior,
-      GlassInteractionBehavior.none,
+      GlassInteractionBehavior.full,
     );
     expect(
       tester
@@ -420,6 +420,9 @@ void main() {
           .indicatorPinchStrength,
       0,
     );
+    final bar = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
+    expect(bar.indicatorExpansion, EdgeInsets.zero);
+    expect(bar.pressScale, 1.06);
     settings.floatingNavigation = false;
     await settings.save();
     await tester.pumpAndSettle();
@@ -430,12 +433,18 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('液态玻璃浅色底栏使用白色外壳和清透选中镜片，暗色保持原样', (tester) async {
-    for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+  testWidgets('液态玻璃明暗选中态跟随主题色，深色使用灰胶囊', (tester) async {
+    for (final (mode, pureBlack, color) in [
+      (ThemeMode.light, false, 0),
+      (ThemeMode.dark, false, 0),
+      (ThemeMode.dark, true, 3),
+    ]) {
       final settings = await prefs();
       settings
         ..liquidGlass = true
-        ..mode = mode;
+        ..mode = mode
+        ..pureBlack = pureBlack
+        ..color = color;
       await tester.pumpWidget(
         MtForumApp(
           preferences: settings,
@@ -457,11 +466,13 @@ void main() {
       expect(glassBar.settings?.rimLight, isLightMode ? 1 : 0);
       expect(
         glassBar.indicatorColor,
-        isLightMode ? const Color(0x26000000) : const Color(0x66000000),
+        isLightMode ? const Color(0x26000000) : const Color(0x26FFFFFF),
       );
+      expect(glassBar.selectedIconColor, scheme.primary);
+      expect(glassBar.selectedLabelColor, scheme.primary);
       expect(
-        glassBar.selectedIconColor,
-        isLightMode ? scheme.primary : Colors.white,
+        glassBar.unselectedIconColor,
+        isLightMode ? scheme.onSurfaceVariant : Colors.white,
       );
       expect(
         glassBar.unselectedLabelColor,
@@ -477,8 +488,8 @@ void main() {
         expect(glassBar.indicatorSettings?.rimShade, 0.12);
         expect(glassBar.indicatorSettings?.rimLight, 0.35);
       } else {
-        expect(glassBar.indicatorSettings?.glassColor, const Color(0x00FFFFFF));
-        expect(glassBar.indicatorSettings?.bodyMode, GlassBodyMode.adaptive);
+        expect(glassBar.indicatorSettings?.glassColor, const Color(0x26FFFFFF));
+        expect(glassBar.indicatorSettings?.bodyMode, GlassBodyMode.clear);
         expect(glassBar.indicatorSettings?.rimShade, 0);
         expect(glassBar.indicatorSettings?.rimLight, 0);
       }
@@ -506,6 +517,11 @@ void main() {
       final title = tester.widget<Text>(find.text('排行第一'));
       expect(title.style!.fontWeight, FontWeight.w400);
       expect(title.style!.fontSize, lessThanOrEqualTo(14));
+      final rankedRow = find.ancestor(
+        of: find.text('排行第一'),
+        matching: find.byType(ListTile),
+      );
+      expect(tester.getSize(rankedRow).height, 48);
       await tester.scrollUntilVisible(
         find.text(fails ? '提示中的作者' : '最新作者'),
         160,
@@ -1083,7 +1099,7 @@ void main() {
     final shortcut = find
         .ancestor(of: find.text('签到'), matching: find.byType(Card))
         .first;
-    expect(tester.getSize(shortcut).height, lessThanOrEqualTo(96));
+    expect(tester.getSize(shortcut).height, lessThanOrEqualTo(80));
     expect(tester.takeException(), isNull);
   });
 
@@ -1224,6 +1240,7 @@ void main() {
     await tester.tap(find.text('个性化'));
     await tester.pumpAndSettle();
     expect(find.text('纯黑模式'), findsOneWidget);
+    expect(find.byType(Divider), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

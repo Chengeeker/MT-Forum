@@ -9,7 +9,7 @@ class ForumAccount {
   final String? avatar;
   final List<(String, String)> fields;
 
-  factory ForumAccount.parse(String source) {
+  factory ForumAccount.parse(String source, {bool requireDetails = true}) {
     final doc = html.parse(source);
     if (doc.querySelector('form[id^="loginform_"]') != null) {
       throw const ForumFailure('登录会话已失效，请退出后重新登录。');
@@ -31,8 +31,8 @@ class ForumAccount {
       final text = value.text.replaceAll(RegExp(r'\s+'), ' ').trim();
       if (text.isNotEmpty) fields.add((label, text));
     }
-    if (name.isEmpty || uid.isEmpty || fields.isEmpty) {
-      throw const ForumFailure('未能读取账号资料，请刷新重试。仍可使用退出登录重新验证账号。');
+    if (name.isEmpty || uid.isEmpty || (requireDetails && fields.isEmpty)) {
+      throw const ForumFailure('未能读取账号资料，请刷新重试。');
     }
     final image = forumUri(
       doc.querySelector('#uhd img')?.attributes['src'] ?? '',
@@ -198,10 +198,15 @@ class NativeForumForm {
 }
 
 class ForumSignIn {
-  ForumSignIn(Element content, Uri base) {
+  ForumSignIn(Element content, Uri base, {bool signedButton = false}) {
     String text(Element? node) =>
         node?.text.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
-    status = text(content.querySelector('.paiming .font'));
+    final statusText = text(content.querySelector('.paiming .font'));
+    signedIn =
+        !RegExp('未|还没|没有').hasMatch(statusText) &&
+        (signedButton ||
+            RegExp('已签|已经签到|签到成功|签到排名|今日排名|今天.*排名').hasMatch(statusText));
+    status = statusText.isEmpty && signedIn ? '当前已签到' : statusText;
     name = text(content.querySelector('.qdright .user .author'));
     final image = content
         .querySelector('.qdright .user img')
@@ -242,7 +247,9 @@ class ForumSignIn {
       throw const ForumFailure('未能读取签到状态和统计，请刷新重试。');
     }
   }
-  late final String status, name, participants;
+  late final String name, participants;
+  late final String status;
+  late final bool signedIn;
   late final String? avatar;
   late final List<(String, String)> stats;
   late final List<String> highlights;
@@ -455,6 +462,10 @@ class NativeForumDocument {
       }
     }
     final sign = content.querySelector('#JD_sign');
+    final signedButton =
+        sign != null &&
+        (sign.classes.any(const {'visted', 'visited', 'btnvisted'}.contains) ||
+            RegExp('已签|已经签到|签到成功').hasMatch(sign.text));
     final signHref = sign?.attributes['href'];
     if (signHref != null) {
       final target = uri.resolve(signHref);
@@ -477,7 +488,8 @@ class NativeForumDocument {
       }
     }
     if (content.querySelector('.lineB .paiming') != null) {
-      signIn = ForumSignIn(content, uri);
+      signIn = ForumSignIn(content, uri, signedButton: signedButton);
+      if (signIn!.signedIn) signAction = null;
     }
     for (final node in content.querySelectorAll('#pt,#hd,#ft,.appl,.sd')) {
       node.remove();

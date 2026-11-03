@@ -34,8 +34,11 @@ Push-Location $releaseRoot
 try {
     Invoke-FlutterTool @('pub', 'get', '--offline')
     if ($RunChecks) {
-        Invoke-FlutterTool @('test', '--no-pub', 'test/forum_test.dart', 'test/widget_test.dart', 'test/native_forum_test.dart', 'test/preview_test.dart', 'test/thread_ui_test.dart', 'test/collection_test.dart', '--reporter', 'expanded')
+        Invoke-FlutterTool @('test', '--no-pub', 'test/forum_test.dart', 'test/widget_test.dart', 'test/native_forum_test.dart', 'test/preview_test.dart', 'test/thread_ui_test.dart', 'test/collection_test.dart', 'test/user_home_test.dart', 'test/webdav_backup_test.dart', 'test/liquid_navigation_test.dart', 'test/my_account_posts_test.dart', '--reporter', 'expanded')
         foreach ($preview in @('preview-dark.png', 'preview-light.png', 'preview-reply-dark.png', 'preview-reply-light.png', 'preview-account-dark.png', 'preview-account-light.png', 'preview-board-dark.png', 'preview-board-light.png', 'preview-profile-dark.png', 'preview-profile-light.png', 'preview-ranking-dark.png', 'preview-ranking-light.png', 'preview-latest-dark.png', 'preview-latest-light.png', 'preview-sign-dark.png', 'preview-sign-light.png', 'preview-messages-dark.png', 'preview-messages-light.png', 'preview-quote-dark.png', 'preview-quote-light.png', 'preview-thread-dark.png', 'preview-thread-light.png', 'preview-composer-dark.png', 'preview-composer-light.png', 'preview-favorites-dark.png', 'preview-favorites-light.png', 'preview-history-dark.png', 'preview-history-light.png', 'preview-messages-tab-dark.png', 'preview-messages-tab-light.png', 'preview-messages-scaled-dark.png')) {
+            Copy-Item -LiteralPath (Join-Path $releaseRoot ('docs\' + $preview)) -Destination (Join-Path $projectRoot ('docs\' + $preview))
+        }
+        foreach ($preview in @('preview-user-home-light.png', 'preview-user-home-dark.png', 'preview-webdav-light.png', 'preview-webdav-dark.png')) {
             Copy-Item -LiteralPath (Join-Path $releaseRoot ('docs\' + $preview)) -Destination (Join-Path $projectRoot ('docs\' + $preview))
         }
     }

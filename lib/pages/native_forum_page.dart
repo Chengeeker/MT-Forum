@@ -10,9 +10,12 @@ import '../core/utils/haptic_feedback_util.dart';
 import '../data/forum.dart';
 import '../data/native_forum.dart';
 import '../data/preferences.dart';
+import '../data/sign_in.dart';
+import '../data/user_home.dart';
 import 'forum_page.dart';
 import 'login_page.dart';
 import 'web_page.dart';
+import 'thread_collection_list.dart';
 
 class NativeForumPage extends StatefulWidget {
   const NativeForumPage({
@@ -40,6 +43,8 @@ class NativeForumPage extends StatefulWidget {
 
 class NativeForumPageState extends State<NativeForumPage> {
   NativeForumDocument? document;
+  ForumMyPosts? myPosts;
+  String myPostsFilter = '';
   String? error;
   String? documentSession;
   bool loading = false, submitting = false, prompted = false, dirty = false;
@@ -50,6 +55,13 @@ class NativeForumPageState extends State<NativeForumPage> {
   bool managingFavorites = false;
   int collectionRevision = 0;
   bool get isFavorites => widget.uri.queryParameters['do'] == 'favorite';
+  bool get isMyPosts =>
+      widget.uri.path == '/home.php' &&
+      widget.uri.queryParameters['mod'] == 'space' &&
+      widget.uri.queryParameters['do'] == 'thread' &&
+      widget.uri.queryParameters['view'] == 'me' &&
+      !widget.uri.queryParameters.containsKey('uid') &&
+      !widget.uri.queryParameters.containsKey('username');
   bool get isPrivacy =>
       currentUri.queryParameters['mod'] == 'spacecp' &&
       currentUri.queryParameters['ac'] == 'privacy';
@@ -76,6 +88,8 @@ class NativeForumPageState extends State<NativeForumPage> {
     if (!mounted) return;
     setState(() {
       document = null;
+      myPosts = null;
+      myPostsFilter = '';
       documentSession = null;
       dirty = false;
       collectionRevision++;
@@ -160,8 +174,15 @@ class NativeForumPageState extends State<NativeForumPage> {
         await submit(model, values, model.buttons.firstOrNull);
         return;
       }
+      final ownPosts = isMyPosts
+          ? ForumMyPosts(source, uri, lastFilter: myPostsFilter)
+          : null;
       setState(() {
         document = data;
+        myPosts = ownPosts;
+        if (ownPosts != null && uri.queryParameters['type'] != 'postcomment') {
+          myPostsFilter = uri.queryParameters['filter'] ?? '';
+        }
         collectionRevision++;
         selectedFavorites.clear();
         error = null;
@@ -210,6 +231,21 @@ class NativeForumPageState extends State<NativeForumPage> {
     final uri = (document?.uri ?? widget.uri).resolve(href);
     if (!isForumUri(uri)) {
       if (mounted) await openExternal(context, uri);
+      return;
+    }
+    if (isMyPosts &&
+        uri.path == '/home.php' &&
+        uri.queryParameters['mod'] == 'space' &&
+        uri.queryParameters['do'] == 'thread' &&
+        uri.queryParameters['view'] == 'me') {
+      if (loading || submitting) return;
+      setState(() => currentUri = uri);
+      await load();
+      if (mounted && error != null && document != null) {
+        setState(() => currentUri = document!.uri);
+      }
+      await WidgetsBinding.instance.endOfFrame;
+      if (mounted && scroll.hasClients && error == null) scroll.jumpTo(0);
       return;
     }
     if (document?.ranking != null &&
@@ -308,18 +344,16 @@ class NativeForumPageState extends State<NativeForumPage> {
       if (documentSession != await forumAuthCookie()) {
         throw const ForumFailure('账号状态已变化，请刷新后再签到。');
       }
-      final result = await widget.client.submit(action, {}, method: 'GET');
+      await signInIfNeeded(
+        widget.client,
+        canSubmit: () async {
+          final current = await forumAuthCookie();
+          return mounted &&
+              session == sessionRevision.value &&
+              documentSession == current;
+        },
+      );
       if (!mounted || session != sessionRevision.value) return;
-      final response = html
-          .parse(result.$1)
-          .querySelector('#messagetext,.alert_error')
-          ?.text
-          .trim();
-      if (response != null &&
-          response.isNotEmpty &&
-          !RegExp('成功|已签到').hasMatch(response)) {
-        throw ForumFailure(response);
-      }
       setState(() => submitting = false);
       await load();
       if (mounted &&
@@ -778,42 +812,70 @@ class NativeForumPageState extends State<NativeForumPage> {
     }
   }
 
-  PreferredSizeWidget? rankingTabs() {
+  PreferredSizeWidget? contentTabs() {
     final ranking = document?.ranking;
-    if (ranking == null) return null;
-    final rows = [
-      ranking.categories,
-      ranking.filters,
-    ].where((row) => row.isNotEmpty).toList();
+    final rows =
+        (myPosts != null
+                ? [myPosts!.types, myPosts!.statuses]
+                : [
+                    if (ranking != null) ranking.categories,
+                    if (ranking != null) ranking.filters,
+                  ])
+            .where((row) => row.isNotEmpty)
+            .toList();
+    if (rows.isEmpty) return null;
     return PreferredSize(
       preferredSize: Size.fromHeight(privacyTabHeight * rows.length),
-      child: Column(
-        children: [
-          for (final row in rows)
-            DefaultTabController(
-              key: ValueKey('${document!.uri}:${row.first.url}'),
-              length: row.length,
-              initialIndex: row
-                  .indexWhere((tab) => tab.selected)
-                  .clamp(0, row.length - 1),
-              child: SizedBox(
-                height: privacyTabHeight,
-                child: Builder(
-                  builder: (context) => TabBar(
-                    isScrollable: true,
-                    tabAlignment: TabAlignment.start,
-                    tabs: [for (final tab in row) Tab(text: tab.label)],
-                    onTap: (index) {
-                      DefaultTabController.of(context).index = row
-                          .indexWhere((tab) => tab.selected)
-                          .clamp(0, row.length - 1);
-                      if (!row[index].selected) openLink(row[index].url);
-                    },
+      child: IgnorePointer(
+        ignoring: myPosts != null && (loading || submitting),
+        child: ExcludeFocus(
+          excluding: myPosts != null && (loading || submitting),
+          child: Column(
+            children: [
+              for (final row in rows)
+                DefaultTabController(
+                  key: ValueKey(
+                    '${document!.uri}:${rows.indexOf(row)}:${row.first.url}',
+                  ),
+                  length: row.length,
+                  initialIndex: row
+                      .indexWhere((tab) => tab.selected)
+                      .clamp(0, row.length - 1),
+                  child: SizedBox(
+                    height: privacyTabHeight,
+                    child: Builder(
+                      builder: (context) => TabBar(
+                        isScrollable: !identical(row, myPosts?.types),
+                        tabAlignment: identical(row, myPosts?.types)
+                            ? TabAlignment.fill
+                            : TabAlignment.start,
+                        dividerColor: myPosts != null
+                            ? Colors.transparent
+                            : null,
+                        tabs: [for (final tab in row) Tab(text: tab.label)],
+                        onTap: (index) async {
+                          final controller = DefaultTabController.of(context);
+                          final selected = row
+                              .indexWhere((tab) => tab.selected)
+                              .clamp(0, row.length - 1);
+                          if (myPosts == null || loading || submitting) {
+                            controller.index = selected;
+                          }
+                          if (loading || submitting || index == selected) {
+                            return;
+                          }
+                          await openLink(row[index].url);
+                          if (context.mounted && error != null) {
+                            controller.index = selected;
+                          }
+                        },
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -967,101 +1029,185 @@ class NativeForumPageState extends State<NativeForumPage> {
     final items = parseFavorites(data.source, data.uri);
     final formElement = html.parse(data.source).querySelector('form#delform');
     final revision = collectionRevision;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Wrap(
-          spacing: 8,
-          children: [
-            for (final type in [
-              ('all', '全部'),
-              ('thread', '帖子'),
-              ('forum', '板块'),
-              ('group', '群组'),
-            ])
-              FilterChip(
-                label: Text(type.$2),
-                selected:
-                    (data.uri.queryParameters['type'] ?? 'all') == type.$1,
-                onSelected: submitting
-                    ? null
-                    : (_) => openLink(
-                        'home.php?mod=space&do=favorite&type=${type.$1}',
-                        '我的收藏',
-                      ),
+    return ThreadCollectionList(
+      key: ValueKey('favorites:$revision'),
+      links: items.map((item) => item.link).toList(),
+      client: widget.client,
+      controller: scroll,
+      onRefresh: load,
+      padding: widget.contentPadding ?? const EdgeInsets.all(16),
+      header: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (loading || submitting) const LinearProgressIndicator(),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-          ],
-        ),
-        if (items.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              html.parse(data.source).querySelector('#favorite_ul,.emp') != null
-                  ? '暂无收藏'
-                  : '未能读取收藏列表，请刷新重试。',
             ),
-          ),
-        for (final item in items)
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Wrap(
+            spacing: 8,
             children: [
-              if (managingFavorites && formElement != null)
-                Checkbox(
-                  semanticLabel: '选择 ${item.link.title}',
-                  value: selectedFavorites.contains(item.id),
-                  onChanged: submitting
+              for (final type in [
+                ('all', '全部'),
+                ('thread', '帖子'),
+                ('forum', '板块'),
+                ('group', '群组'),
+              ])
+                FilterChip(
+                  label: Text(type.$2),
+                  selected:
+                      (data.uri.queryParameters['type'] ?? 'all') == type.$1,
+                  onSelected: submitting
                       ? null
-                      : (value) => setState(() {
-                          if (value == true) {
-                            selectedFavorites.add(item.id);
-                          } else {
-                            selectedFavorites.remove(item.id);
-                          }
-                        }),
-                ),
-              Expanded(
-                child: ThreadTile(
-                  key: ValueKey('$revision:${item.id}'),
-                  link: item.link,
-                  loadSummary: threadId(forumUri(item.link.url)) == null
-                      ? null
-                      : (active) => widget.client.threadSummary(
-                          item.link.url,
-                          () =>
-                              active() &&
-                              mounted &&
-                              revision == collectionRevision,
+                      : (_) => openLink(
+                          'home.php?mod=space&do=favorite&type=${type.$1}',
+                          '我的收藏',
                         ),
-                  onTap: (link) => openLink(link.url, link.title, link),
                 ),
-              ),
             ],
           ),
-        if (managingFavorites && formElement != null && items.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: FilledButton.tonalIcon(
-              icon: const Icon(Icons.delete_outline),
-              label: Text('删除选中收藏（${selectedFavorites.length}）'),
-              onPressed: submitting || selectedFavorites.isEmpty
-                  ? null
-                  : () {
-                      final form = NativeForumForm(formElement, data.uri);
-                      submit(
-                        form,
-                        form.values()
-                          ..['favorite[]'] = selectedFavorites.toList(),
-                        form.buttons.firstOrNull,
-                      );
-                    },
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                html.parse(data.source).querySelector('#favorite_ul,.emp') !=
+                        null
+                    ? '暂无收藏'
+                    : '未能读取收藏列表，请刷新重试。',
+              ),
+            ),
+        ],
+      ),
+      itemBuilder: (index, link, summary) {
+        final item = items[index];
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (managingFavorites && formElement != null)
+              Checkbox(
+                semanticLabel: '选择 ${item.link.title}',
+                value: selectedFavorites.contains(item.id),
+                onChanged: submitting
+                    ? null
+                    : (value) => setState(() {
+                        if (value == true) {
+                          selectedFavorites.add(item.id);
+                        } else {
+                          selectedFavorites.remove(item.id);
+                        }
+                      }),
+              ),
+            Expanded(
+              child: ThreadTile(
+                key: ValueKey('$revision:${item.id}'),
+                link: link,
+                summary: summary,
+                onTap: (link) => openLink(link.url, link.title, link),
+              ),
+            ),
+          ],
+        );
+      },
+      footer: Column(
+        children: [
+          if (managingFavorites && formElement != null && items.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: FilledButton.tonalIcon(
+                icon: const Icon(Icons.delete_outline),
+                label: Text('删除选中收藏（${selectedFavorites.length}）'),
+                onPressed: submitting || selectedFavorites.isEmpty
+                    ? null
+                    : () {
+                        final form = NativeForumForm(formElement, data.uri);
+                        submit(
+                          form,
+                          form.values()
+                            ..['favorite[]'] = selectedFavorites.toList(),
+                          form.buttons.firstOrNull,
+                        );
+                      },
+              ),
+            ),
+          for (final a
+              in html.parse(data.source).querySelectorAll('.pg a[href]'))
+            TextButton(
+              onPressed: () => openLink(a.attributes['href']!, '我的收藏'),
+              child: Text(a.text.trim()),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget myPostsView() {
+    final data = myPosts!;
+    return ThreadCollectionList(
+      key: ValueKey('my-posts:$collectionRevision'),
+      links: data.threads,
+      client: widget.client,
+      controller: scroll,
+      onRefresh: load,
+      preparePreviews:
+          (document!.uri.queryParameters['type'] ?? 'thread') == 'thread',
+      header: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (loading) const LinearProgressIndicator(),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (data.threads.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                data.emptyMessage.isEmpty ? '暂无相关帖子' : data.emptyMessage,
+              ),
+            ),
+        ],
+      ),
+      itemBuilder: (_, link, summary) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: AppSectionCard(
+          borderRadius: 12,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: ThreadTile(
+              key: ValueKey(link.url),
+              link: link,
+              summary: summary,
+              onTap: (selected) =>
+                  openLink(selected.url, selected.title, selected),
             ),
           ),
-        for (final a in html.parse(data.source).querySelectorAll('.pg a[href]'))
-          TextButton(
-            onPressed: () => openLink(a.attributes['href']!, '我的收藏'),
-            child: Text(a.text.trim()),
-          ),
-      ],
+        ),
+      ),
+      footer: Wrap(
+        spacing: 12,
+        children: [
+          if (data.previous != null)
+            TextButton.icon(
+              onPressed: loading ? null : () => openLink(data.previous!),
+              icon: const Icon(Icons.chevron_left),
+              label: const Text('上一页'),
+            ),
+          if (data.next != null)
+            TextButton.icon(
+              onPressed: loading ? null : () => openLink(data.next!),
+              icon: const Icon(Icons.chevron_right),
+              label: const Text('下一页'),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1092,8 +1238,8 @@ class NativeForumPageState extends State<NativeForumPage> {
                 ? null
                 : ReviewFrostedAppBar(
                     title: Text(widget.title),
-                    bottom: document?.ranking != null
-                        ? rankingTabs()
+                    bottom: document?.ranking != null || myPosts != null
+                        ? contentTabs()
                         : isPrivacy &&
                               (document?.privacyTabs.isNotEmpty ?? false)
                         ? PreferredSize(
@@ -1159,6 +1305,10 @@ class NativeForumPageState extends State<NativeForumPage> {
               bottom: !widget.embedded,
               child: document?.ranking != null
                   ? rankingList()
+                  : myPosts != null
+                  ? myPostsView()
+                  : isFavorites && document != null
+                  ? favoritesView()
                   : ListView(
                       controller: scroll,
                       padding:
@@ -1193,9 +1343,7 @@ class NativeForumPageState extends State<NativeForumPage> {
                             child: Text(sessionExpired ? '重新登录' : '重试'),
                           ),
                         if (document != null)
-                          if (isFavorites)
-                            favoritesView()
-                          else if (document!.signIn != null)
+                          if (document!.signIn != null)
                             ForumSignInView(
                               data: document!.signIn!,
                               busy: loading || submitting,
@@ -1268,10 +1416,10 @@ class ForumSignInView extends StatelessWidget {
                   label: Text(
                     busy
                         ? '处理中…'
+                        : data.signedIn
+                        ? '当前已签到'
                         : onSignIn != null
                         ? '立即签到'
-                        : RegExp('已经签到|已签到|签到成功').hasMatch(data.status)
-                        ? '今日已签到'
                         : '当前不可签到',
                   ),
                 ),

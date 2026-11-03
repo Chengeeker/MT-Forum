@@ -11,6 +11,7 @@ import '../data/preferences.dart';
 import 'native_forum_page.dart';
 import 'forum_page.dart';
 import 'account_page.dart';
+import 'user_home_page.dart';
 import 'web_page.dart';
 
 Future<bool> showForumLogin(
@@ -55,12 +56,40 @@ Future<void> openForumWeb(
     if (!authenticated && !await showForumLogin(context, client)) return;
   }
   if (!context.mounted) return;
+  final isUserPage =
+      RegExp(r'^/space-uid-\d+\.html$').hasMatch(uri.path) ||
+      uri.path == '/space.php' ||
+      (uri.path == '/home.php' &&
+          uri.queryParameters['mod'] == 'space' &&
+          const ['', 'profile'].contains(uri.queryParameters['do'] ?? ''));
+  final profile = isUserPage ? forumUserProfile(uri.toString(), uri) : '';
+  if (profile.isNotEmpty) {
+    final settings =
+        preferences ?? Preferences(await SharedPreferences.getInstance());
+    if (!context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => UserHomePage(
+          uri: Uri.parse(profile),
+          client: client,
+          preferences: settings,
+          name: title,
+        ),
+      ),
+    );
+    return;
+  }
   if (uri.path == '/home.php' &&
       uri.queryParameters['do'] == 'profile' &&
       !uri.queryParameters.containsKey('uid') &&
       !uri.queryParameters.containsKey('username')) {
+    final settings =
+        preferences ?? Preferences(await SharedPreferences.getInstance());
+    if (!context.mounted) return;
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => ForumAccountPage(client: client)),
+      MaterialPageRoute<void>(
+        builder: (_) => ForumAccountPage(client: client, preferences: settings),
+      ),
     );
     return;
   }

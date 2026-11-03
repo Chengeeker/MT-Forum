@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html;
@@ -112,13 +113,15 @@ class ForumLink {
   final bool pinned, hot;
   final String? imageUrl;
   ForumLink copyWith({
+    String? url,
     String? author,
     String? role,
     String? imageUrl,
     String? profile,
+    String? excerpt,
   }) => ForumLink(
     title,
-    url,
+    url ?? this.url,
     subtitle: subtitle,
     imageUrl: imageUrl ?? this.imageUrl,
     author: author ?? this.author,
@@ -127,7 +130,7 @@ class ForumLink {
     replies: replies,
     pinned: pinned,
     hot: hot,
-    excerpt: excerpt,
+    excerpt: excerpt ?? this.excerpt,
     role: role ?? this.role,
     likes: likes,
     profile: profile ?? this.profile,
@@ -283,14 +286,46 @@ String? authorAvatar(String? href, Uri base) {
   return 'https://cdn.binmt.cc/uc_server/data/avatar/${id.substring(0, 3)}/${id.substring(3, 5)}/${id.substring(5, 7)}/${id.substring(7)}_avatar_middle.jpg';
 }
 
-String _forumProfile(String? href, Uri base) {
-  if (href == null) return '';
+String forumUserProfile(String? href, Uri base, {String username = ''}) {
   try {
-    final uri = base.resolve(href);
-    return isForumUri(uri) ? uri.toString() : '';
+    final uri = base.resolve(href ?? '');
+    if (isForumUri(uri)) {
+      final uid =
+          RegExp(r'^/space-uid-(\d+)\.html$').firstMatch(uri.path)?.group(1) ??
+          ((uri.path == '/space.php' ||
+                  (uri.path == '/home.php' &&
+                      uri.queryParameters['mod'] == 'space'))
+              ? _numericId(uri.queryParameters['uid'])
+              : null);
+      final name =
+          uri.path == '/home.php' && uri.queryParameters['mod'] == 'space'
+          ? uri.queryParameters['username']
+          : null;
+      if (uid != null || name?.isNotEmpty == true) {
+        return forumUri('home.php')
+            .replace(
+              queryParameters: {
+                'mod': 'space',
+                'do': 'profile',
+                if (uid != null) 'uid': uid else 'username': name!,
+              },
+            )
+            .toString();
+      }
+    }
   } on FormatException {
-    return '';
+    // Invalid or article URLs must never become an author's destination.
   }
+  if (username.trim().isEmpty) return '';
+  return forumUri('home.php')
+      .replace(
+        queryParameters: {
+          'mod': 'space',
+          'do': 'profile',
+          'username': username.trim(),
+        },
+      )
+      .toString();
 }
 
 ForumDocument parseForum(String source, Uri base) {
@@ -342,7 +377,11 @@ ForumDocument parseForum(String source, Uri base) {
           '$forumOrigin/thread-$tid-1-1.html',
           subtitle: by,
           author: _clean(user?.text ?? ''),
-          profile: _forumProfile(user?.attributes['href'], base),
+          profile: forumUserProfile(
+            user?.attributes['href'],
+            base,
+            username: _clean(user?.text ?? ''),
+          ),
           imageUrl:
               avatar?.toString() ??
               authorAvatar(user?.attributes['href'], base),
@@ -397,9 +436,16 @@ ForumDocument parseForum(String source, Uri base) {
     final id = body.id.replaceFirst('postmessage_', '');
     final post =
         doc.getElementById('post_$id') ?? _ancestor(body, 'table') ?? body;
-    final user = post.querySelector(
+    final users = post.querySelectorAll(
       '.authi a.xw1, .authi a[href*="uid="], .pls .authi a',
     );
+    final user =
+        users
+            .where(
+              (a) => forumUserProfile(a.attributes['href'], base).isNotEmpty,
+            )
+            .firstOrNull ??
+        users.firstOrNull;
     final profile = user?.attributes['href'];
     // Keep media lazy and restricted to HTTPS; never preload a whole thread.
     final images = <String>[];
@@ -512,7 +558,7 @@ ForumDocument parseForum(String source, Uri base) {
         _clean(user?.text ?? '论坛用户'),
         _clean(post.querySelector('.authi em')?.text ?? ''),
         body.innerHtml,
-        profile == null ? '' : base.resolve(profile).toString(),
+        forumUserProfile(profile, base, username: _clean(user?.text ?? '')),
         images: images,
         imagePreviews: imagePreviews,
         avatar:
@@ -560,7 +606,7 @@ ForumDocument parseForum(String source, Uri base) {
             _clean(a.attributes['title'] ?? a.text),
             '$forumOrigin/thread-$id-1-1.html',
             author: field('作者', r'时间[：:]'),
-            profile: _forumProfile(user?.attributes['href'], base),
+            profile: forumUserProfile(user?.attributes['href'], base),
             imageUrl: authorAvatar(user?.attributes['href'], base),
             date: field('时间', r'浏览[：:]'),
             views: field('浏览', '次'),
@@ -674,6 +720,9 @@ class ThreadSummary {
   late final String? avatar;
 }
 
+ThreadSummary _parseThreadPreview((String, Uri) source) =>
+    ThreadSummary(parseForum(source.$1, source.$2));
+
 class ForumClient {
   ForumClient({Dio? dio})
     : _dio =
@@ -694,7 +743,15 @@ class ForumClient {
       await previous;
       if (!active()) throw const ForumFailure('已离开此条目。');
       // Preview traffic must not occupy the hidden browser needed for navigation/login.
-      return ThreadSummary(await _loadHttp(url));
+      final source = await _requestSource(forumUri(url));
+      if (!active()) throw const ForumFailure('已离开此条目。');
+      final summary = await compute(
+        _parseThreadPreview,
+        source,
+        debugLabel: 'forum-preview',
+      );
+      if (!active()) throw const ForumFailure('已离开此条目。');
+      return summary;
     }();
     _summaryQueue[slot] = result.then<void>(
       (_) {},

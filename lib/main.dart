@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +13,7 @@ import 'core/theme/app_theme.dart';
 import 'core/theme/app_text_scaler.dart';
 import 'data/forum.dart';
 import 'data/preferences.dart';
+import 'data/sign_in.dart';
 import 'pages/home_page.dart';
 import 'pages/web_page.dart';
 
@@ -61,6 +64,30 @@ class _MtForumAppState extends State<MtForumApp> {
       client.browserLogin = reader!.login;
       client.browserCancelLogin = reader!.cancelLogin;
       client.browserResetSession = reader!.resetSession;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(autoSignIn());
+    });
+  }
+
+  Future<void> autoSignIn() async {
+    if (!widget.preferences.autoSignIn) return;
+    final revision = sessionRevision.value;
+    try {
+      final session = await forumAuthCookie();
+      if (!mounted || session.isEmpty || !widget.preferences.autoSignIn) return;
+      await signInIfNeeded(
+        client,
+        canSubmit: () async {
+          final current = await forumAuthCookie();
+          return mounted &&
+              widget.preferences.autoSignIn &&
+              revision == sessionRevision.value &&
+              session == current;
+        },
+      );
+    } catch (_) {
+      // Background sign-in must not interrupt navigation or retry an uncertain write.
     }
   }
 

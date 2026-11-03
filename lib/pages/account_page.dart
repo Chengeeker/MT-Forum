@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/design_system/components/review_frosted_app_bar.dart';
 import '../core/widgets/app_section_card.dart';
-import '../core/widgets/forum_avatar.dart';
 import '../data/forum.dart';
 import '../data/native_forum.dart';
+import '../data/preferences.dart';
+import '../data/user_home.dart';
+import 'user_home_page.dart';
 import 'web_page.dart';
 
 bool _signingOut = false;
@@ -59,20 +62,41 @@ Future<bool> logoutForum(
 }
 
 class ForumAccountPage extends StatefulWidget {
-  const ForumAccountPage({super.key, required this.client});
+  const ForumAccountPage({super.key, required this.client, this.preferences});
   final ForumClient client;
+  final Preferences? preferences;
   @override
   State<ForumAccountPage> createState() => _ForumAccountPageState();
 }
 
 class _ForumAccountPageState extends State<ForumAccountPage> {
   ForumAccount? account;
+  ForumUserHome? initialHome;
+  Preferences? preferences;
   String? error;
   bool loading = false, signingOut = false;
   int revision = 0;
   @override
   void initState() {
     super.initState();
+    sessionRevision.addListener(accountChanged);
+    load();
+  }
+
+  @override
+  void dispose() {
+    sessionRevision.removeListener(accountChanged);
+    super.dispose();
+  }
+
+  void accountChanged() {
+    if (signingOut) return;
+    revision++;
+    setState(() {
+      account = null;
+      initialHome = null;
+      loading = false;
+    });
     load();
   }
 
@@ -88,7 +112,17 @@ class _ForumAccountPageState extends State<ForumAccountPage> {
           .source('$forumOrigin/home.php?mod=space&do=profile')
           .timeout(const Duration(seconds: 30));
       final data = ForumAccount.parse(source);
-      if (mounted && generation == revision) setState(() => account = data);
+      final settings =
+          widget.preferences ??
+          Preferences(await SharedPreferences.getInstance());
+      final home = ForumUserHome(source, ownProfileUri(data.uid));
+      if (mounted && generation == revision) {
+        setState(() {
+          account = data;
+          initialHome = home;
+          preferences = settings;
+        });
+      }
     } catch (e) {
       if (mounted && generation == revision) {
         setState(() => error = e.toString());
@@ -120,76 +154,77 @@ class _ForumAccountPageState extends State<ForumAccountPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: ReviewFrostedAppBar(
-      title: const Text('论坛账号'),
-      actions: [
-        IconButton(
-          tooltip: '刷新资料',
-          onPressed: loading || signingOut ? null : load,
-          icon: const Icon(Icons.refresh),
-        ),
-      ],
-    ),
-    bottomNavigationBar: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: OutlinedButton.icon(
-          onPressed: signingOut ? null : logout,
-          icon: signingOut
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.logout),
-          label: Text(signingOut ? '正在退出…' : '退出登录'),
-        ),
-      ),
-    ),
-    body: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (loading) const LinearProgressIndicator(),
-          if (error != null)
-            AppSectionCard(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    const Icon(Icons.info_outline),
-                    const SizedBox(height: 12),
-                    Text(error!, textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    FilledButton.tonal(
-                      onPressed: signingOut ? null : load,
-                      child: const Text('重试'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (account != null) ...[
-            AppSectionCard(
-              child: ListTile(
-                leading: ForumAvatar(url: account!.avatar, radius: 20),
-                title: Text(account!.name),
-                subtitle: Text('UID: ${account!.uid}'),
-              ),
-            ),
-            const SizedBox(height: 12),
-            AppSectionCard(
-              child: Column(
-                children: [
-                  for (final field in account!.fields)
-                    ListTile(title: Text(field.$1), subtitle: Text(field.$2)),
-                ],
-              ),
-            ),
-          ],
-        ],
+  Uri ownProfileUri(String uid) => forumUri('home.php')
+      .replace(queryParameters: {'mod': 'space', 'do': 'profile', 'uid': uid});
+
+  Widget logoutButton() => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: OutlinedButton.icon(
+        onPressed: signingOut ? null : logout,
+        icon: signingOut
+            ? const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.logout),
+        label: Text(signingOut ? '正在退出…' : '退出登录'),
       ),
     ),
   );
+
+  @override
+  Widget build(BuildContext context) {
+    if (account != null && initialHome != null && preferences != null) {
+      return UserHomePage(
+        key: ValueKey('own-home:${account!.uid}:${sessionRevision.value}'),
+        uri: ownProfileUri(account!.uid),
+        client: widget.client,
+        preferences: preferences!,
+        title: '我的主页',
+        ownAccount: true,
+        initialHome: initialHome,
+        bottomNavigationBar: logoutButton(),
+      );
+    }
+    return Scaffold(
+      appBar: ReviewFrostedAppBar(
+        title: const Text('论坛账号'),
+        actions: [
+          IconButton(
+            tooltip: '刷新资料',
+            onPressed: loading || signingOut ? null : load,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      bottomNavigationBar: logoutButton(),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (loading) const LinearProgressIndicator(),
+            if (error != null)
+              AppSectionCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.info_outline),
+                      const SizedBox(height: 12),
+                      Text(error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 12),
+                      FilledButton.tonal(
+                        onPressed: signingOut ? null : load,
+                        child: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }

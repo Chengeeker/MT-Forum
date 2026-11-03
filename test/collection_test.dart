@@ -13,6 +13,8 @@ import 'package:mt_forum/data/preferences.dart';
 import 'package:mt_forum/pages/home_page.dart';
 import 'package:mt_forum/pages/web_page.dart';
 import 'package:mt_forum/pages/native_forum_page.dart';
+import 'package:mt_forum/pages/forum_page.dart';
+import 'package:mt_forum/pages/thread_collection_list.dart';
 import 'package:mt_forum/core/theme/app_theme.dart';
 import 'package:mt_forum/core/widgets/forum_avatar.dart';
 
@@ -52,6 +54,52 @@ class CollectionClient extends ForumClient {
   }
 }
 
+class DelayedPreviewClient extends CollectionClient {
+  final requests = <(String, Completer<ThreadSummary>, bool Function())>[];
+  @override
+  Future<String> source(String url) async =>
+      (await super.source(url))
+          .replaceAll('forum-2-1.html', 'thread-124-1-1.html')
+          .replaceAll('收藏示例板块', '收藏第二帖');
+
+  @override
+  Future<ThreadSummary> threadSummary(String url, bool Function() active) {
+    summaries++;
+    final request = Completer<ThreadSummary>();
+    requests.add((url, request, active));
+    return request.future;
+  }
+
+  void complete(int index, {String author = '测试作者'}) {
+    final (url, request, _) = requests[index];
+    request.complete(
+      ThreadSummary(
+        parseForum(
+          File('test/fixtures/thread.html')
+              .readAsStringSync()
+              .replaceAll('测试作者', author),
+          forumUri(url),
+        ),
+      ),
+    );
+  }
+}
+
+Future<Preferences> historyPreferences(int count) async {
+  final preferences = Preferences(await SharedPreferences.getInstance());
+  preferences.history = [
+    for (var i = 0; i < count; i++)
+      ForumLink('历史条目$i', '$forumOrigin/thread-${100 + i}-1-1.html'),
+  ];
+  return preferences;
+}
+
+int preparedRows(WidgetTester tester) =>
+    (tester.widget<ListView>(find.byType(ListView)).childrenDelegate
+            as SliverChildBuilderDelegate)
+        .childCount! -
+    2;
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -73,6 +121,152 @@ void main() {
     expect(items.map((e) => e.id), ['10', '11']);
     expect(items.first.link.title, '收藏示例帖子');
     expect(boardId(forumUri(items.last.link.url)), '2');
+  });
+  testWidgets('收藏整批准备后显示卡片，不逐张显示标题再补全文', (tester) async {
+    final client = DelayedPreviewClient();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NativeForumPage(
+          title: '我的收藏',
+          uri: forumUri('home.php?mod=space&do=favorite'),
+          client: client,
+          preferences: Preferences(await SharedPreferences.getInstance()),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(client.requests, hasLength(2));
+    expect(find.text('收藏示例帖子'), findsNothing);
+    client.complete(0);
+    await tester.pump();
+    expect(find.text('测试作者'), findsNothing);
+    expect(preparedRows(tester), 0);
+    client.complete(1);
+    await tester.pump();
+    expect(preparedRows(tester), 2);
+    expect(find.text('收藏示例帖子'), findsOneWidget);
+    expect(find.text('测试作者'), findsNWidgets(2));
+    for (final tile in tester.widgetList<ThreadTile>(find.byType(ThreadTile))) {
+      expect(tile.loadSummary, isNull);
+      expect(tile.summary, isNotNull);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('历史分批预取、整批追加，滚回及记录重排不重复请求', (tester) async {
+    tester.view.physicalSize = const Size(390, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final client = DelayedPreviewClient();
+    final preferences = await historyPreferences(30);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HistoryPage(client: client, preferences: preferences),
+      ),
+    );
+    await tester.pump();
+    expect(client.requests, hasLength(collectionPreviewBatchSize));
+    expect(preparedRows(tester), 0);
+    client.complete(0);
+    await tester.pump();
+    expect(preparedRows(tester), 0);
+    expect(find.text('历史条目0'), findsNothing);
+    for (var i = 1; i < 10; i++) {
+      client.complete(i);
+    }
+    await tester.pump();
+    expect(preparedRows(tester), 10);
+    expect(find.text('测试作者'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.text('历史条目9'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    expect(client.requests, hasLength(20));
+    final position = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    final offset = position.pixels;
+    final firstTile = find.byType(ThreadTile).first;
+    final key = tester.widget<ThreadTile>(firstTile).key!;
+    final height = tester.getSize(firstTile).height;
+    client.complete(10);
+    await tester.pump();
+    expect(preparedRows(tester), 10);
+    for (var i = 11; i < 20; i++) {
+      client.complete(i);
+    }
+    await tester.pump();
+    expect(preparedRows(tester), 20);
+    expect(position.pixels, closeTo(offset, 0.01));
+    expect(tester.getSize(find.byKey(key)).height, height);
+    position.jumpTo(0);
+    await tester.pump();
+    await tester.pump();
+    expect(client.requests, hasLength(20));
+    await preferences.visited(preferences.history[2]);
+    await tester.pump();
+    expect(client.requests, hasLength(20));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('预览超时保留标题，迟到响应不改行高，显式重试才更新', (tester) async {
+    final client = DelayedPreviewClient();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HistoryPage(
+          client: client,
+          preferences: await historyPreferences(1),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 13));
+    await tester.pump();
+    expect(find.text('历史条目0'), findsOneWidget);
+    expect(find.text('测试作者'), findsNothing);
+    final height = tester.getSize(find.byType(ThreadTile)).height;
+    client.complete(0);
+    await tester.pump();
+    expect(find.text('测试作者'), findsNothing);
+    expect(tester.getSize(find.byType(ThreadTile)).height, height);
+    await tester.tap(find.text('部分帖子预览未能加载，点此重试'));
+    await tester.pump();
+    expect(client.requests, hasLength(2));
+    client.complete(1);
+    await tester.pump();
+    expect(find.text('测试作者'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('历史会话变化丢弃旧批次和内存中的旧账号作者', (tester) async {
+    final client = DelayedPreviewClient();
+    final preferences = await historyPreferences(1);
+    preferences.history = [
+      preferences.history.single.copyWith(
+        author: '旧账号私密作者',
+        imageUrl: 'https://cdn.binmt.cc/old.jpg',
+      ),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HistoryPage(client: client, preferences: preferences),
+      ),
+    );
+    await tester.pump();
+    sessionRevision.value++;
+    await tester.pump();
+    expect(client.requests, hasLength(2));
+    expect(client.requests.first.$3(), isFalse);
+    client.complete(0, author: '迟到旧账号作者');
+    await tester.pump();
+    expect(find.text('迟到旧账号作者'), findsNothing);
+    expect(find.text('旧账号私密作者'), findsNothing);
+    client.complete(1, author: '当前账号作者');
+    await tester.pump();
+    expect(find.text('当前账号作者'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
   testWidgets('收藏使用帖子卡片，删除前确认且失败保留选中项', (tester) async {
     final client = CollectionClient();

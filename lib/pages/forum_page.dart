@@ -775,14 +775,14 @@ class _ForumPageState extends State<ForumPage> {
     final profile = post?.profile.isNotEmpty == true
         ? post!.profile
         : widget.link.profile;
-    return Row(
-      children: [
-        ForumAvatar(url: post?.avatar ?? widget.link.imageUrl, radius: 18),
-        const SizedBox(width: 8),
-        Expanded(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: profile.isEmpty ? null : () => openSite(author, profile),
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: author == '读取作者信息…' ? null : () => openAuthor(author, profile),
+      child: Row(
+        children: [
+          ForumAvatar(url: post?.avatar ?? widget.link.imageUrl, radius: 18),
+          const SizedBox(width: 8),
+          Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Column(
@@ -816,9 +816,14 @@ class _ForumPageState extends State<ForumPage> {
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  void openAuthor(String name, String profile) {
+    final target = forumUserProfile(profile, forumUri(url), username: name);
+    if (target.isNotEmpty) unawaited(openSite(name, target));
   }
 
   Widget postCard(ForumPost post, int index) {
@@ -835,13 +840,15 @@ class _ForumPageState extends State<ForumPage> {
               if (index > 0) ...[
                 Row(
                   children: [
-                    ForumAvatar(url: post.avatar),
+                    InkWell(
+                      onTap: () => openAuthor(post.author, post.profile),
+                      customBorder: const CircleBorder(),
+                      child: ForumAvatar(url: post.avatar),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: InkWell(
-                        onTap: post.profile.isEmpty
-                            ? null
-                            : () => openSite(post.author, post.profile),
+                        onTap: () => openAuthor(post.author, post.profile),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1182,10 +1189,12 @@ class ThreadTile extends StatefulWidget {
     required this.link,
     required this.onTap,
     this.loadSummary,
+    this.summary,
   });
   final ForumLink link;
   final ValueChanged<ForumLink> onTap;
   final Future<ThreadSummary> Function(bool Function())? loadSummary;
+  final ThreadSummary? summary;
   @override
   State<ThreadTile> createState() => _ThreadTileState();
 }
@@ -1195,7 +1204,7 @@ class _ThreadTileState extends State<ThreadTile> {
   @override
   void initState() {
     super.initState();
-    if (widget.loadSummary != null) {
+    if (widget.loadSummary != null && widget.summary == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         try {
@@ -1223,6 +1232,7 @@ class _ThreadTileState extends State<ThreadTile> {
   @override
   Widget build(BuildContext context) {
     final link = widget.link;
+    final summary = widget.summary ?? this.summary;
     final theme = Theme.of(context);
     final author = link.author.isNotEmpty ? link.author : summary?.author ?? '';
     final role = summary?.role.isNotEmpty == true ? summary!.role : link.role;
@@ -1263,30 +1273,45 @@ class _ThreadTileState extends State<ThreadTile> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (author.isNotEmpty) ...[
-                  Row(
-                    children: [
-                      ForumAvatar(
-                        url: link.imageUrl ?? summary?.avatar,
-                        radius: 16,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(author, style: theme.textTheme.bodyMedium),
-                            if (role.isNotEmpty) ForumLabel(role),
-                            if (summary?.uid.isNotEmpty == true)
-                              Text(
-                                'UID ${summary!.uid}',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                          ],
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      final profile = forumUserProfile(
+                        summary?.profile.isNotEmpty == true
+                            ? summary!.profile
+                            : link.profile,
+                        forumUri(link.url),
+                        username: author,
+                      );
+                      if (profile.isNotEmpty) {
+                        widget.onTap(ForumLink(author, profile));
+                      }
+                    },
+                    child: Row(
+                      children: [
+                        ForumAvatar(
+                          url: link.imageUrl ?? summary?.avatar,
+                          radius: 16,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(author, style: theme.textTheme.bodyMedium),
+                              if (role.isNotEmpty) ForumLabel(role),
+                              if (summary?.uid.isNotEmpty == true)
+                                Text(
+                                  'UID ${summary!.uid}',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 6),
                 ],

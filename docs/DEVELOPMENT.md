@@ -1,6 +1,6 @@
 # MT论坛开发文档
 
-更新：2026-10-29。当前版本：1.0.1+32。本机开发文档副本与仓库文档同步；本机路径不公开。
+更新：2026-11-03。当前版本：1.3.8+44。本机开发文档副本与仓库文档同步；本机路径不公开。
 
 ## 用户要求与边界
 - Android 包名 `bbs.binmt.cc`，应用名 MT论坛，仅 ARM64-v8a。
@@ -459,3 +459,128 @@
 ## 2026-10-29 README 与公开文档隐私整理
 - README 已改为分区说明，移除本机开发文档副本和 SDK 安装路径；公开 Markdown 中的 BKS、下载目录、Review 源码和项目绝对路径统一改为通用描述或仓库相对路径。
 - 此次只改文档，不改变应用源码、版本号或 APK。
+## 2026-11-03 启动自动签到与已签到状态（1.1.0+33）
+- 设置新增“自动签到”，复用 ReviewSwitchTile，默认关闭并持久化。开启后每次冷启动在首帧后后台检查；游客跳过，已签到直接结束，不弹登录页、不打开签到页、不刷新当前内容；不会在 resume 或普通设置重建时重复执行。
+- 后台与手动签到共用完整检查/提交/确认事务，同一 ForumClient 的并发请求合并。只提交当次同源签到页给出的 plugin.php / k_misign:sign / qiandao 动作与非空 formhash；提交前再次核对开关、账号 Cookie 和会话代次，取消、退出或换号时停止旧操作。签到写请求不自动重试；结果不明确时不虚构成功。
+- 已签到状态统一识别签到文字、站点已访问标记和今日签到排名；“已经签到”与“已签过到”均覆盖。按钮正确显示“当前已签到”；缺少动作且状态未知时仍显示“当前不可签到”，不能以缺失链接冒充已签到。
+- 49 项原生页面与签到专项测试通过，覆盖偏好保存、启动开关/游客、页面不跳转、重建不重复、合并并发、取消/失败/未确认不重试、已签到跳过与排名状态。首次全量检查发现漏识别“已经签到”，修复后专项回归通过。定向静态分析无诊断。
+- 此功能按新增功能升至 1.1.0+33，关于页同步版本。旧 code32 APK 已保留在 build/rollback，原有源码快照仍保留。本机未能读取官方签到页，未做真实账号签到；测试使用合成响应，不代表真实账号/设备验收。
+- 正式 ARM64 APK：MT论坛_v1.1.0_arm64.apk，25,217,420 字节，SHA-256 2005E31E2E8E0D8A26FF0F8A009B22CE7609794EEDC4557D39F1B25FDB016EDF。aapt 核对包名 bbs.binmt.cc、版本 1.1.0+33、应用名 MT论坛；ZIP 唯一 ABI arm64-v8a；V2 证书摘要 3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975，与旧包一致；16KB zipalign 通过。191 个生产源文件与实际构建快照哈希一致。Windows aapt 不能直接读取中文路径，核验必须使用 ASCII 构建目录中的同一 APK。
+- 核验记录 build/release-verification-code33.json、build/final-apk-signature-code33.txt；专项日志 build/auto-signin-targeted-tests.log，编译日志 build/auto-signin-build.log。新源码快照 build/source-snapshots/v1.1.0+33，旧包 build/rollback/MT论坛_v1.0.1_code32_arm64.apk 的 SHA-256 与原 code32 记录一致；根目录仅保留新包。未安装设备，本轮未推送 GitHub。
+
+## 2026-11-03 作者主页导航与点击选区（1.1.1+34）
+- 根因：ThreadTile 之前只有整卡的文章点击区域，头像/用户名没有独立导航；详情顶栏和回复楼头像没有绑定点击。解析器还把任意同站 href（包括空 href 解析出的当前文章）作为作者地址，导致姓名跳回文章或通用 HTML 内容页。
+- 统一作者地址解析：只识别站内 UID/用户名资料入口，标准化为 home.php?mod=space&do=profile；帖子作者优先选取真正的用户链接。无有效链接但有真实作者名时按用户名访问用户主页，不将文章 URL 当作资料地址。
+- 卡片头像、用户名与 UID/等级所在作者行采用独立点击区域；正文/标题继续打开帖子。所有使用 ThreadTile 的首页、板块、导读、收藏和历史同步覆盖。详情顶栏的头像和名字以及回复楼层头像/名字使用相同用户导航，保留文章与阅读位置。
+- 用户资料入口复用现有原生账号资料组件作为“用户主页”，展示头像、名称、UID 与官网公开资料字段及刷新/错误重试；仅自己的账号管理入口提供退出登录，访问其他用户不会呈现自己的管理操作。其他功能地址（如用户帖子列表）不被资料入口拦截。
+- 83 项解析、帖子界面、原生页面、收藏历史检查通过，含头像/姓名与文章点击事件隔离、无效作者链接、详情顶栏及回复楼分别访问对应 UID、返回文章以及用户主页无退出按钮。定向静态分析无诊断。首次检查修正了测试选区（不能用全部头像的 last 推断回复头像，应定位该楼层卡片），并保留既有账号错误提示前缀。
+- 版本 1.1.1+34；旧 code33 APK 与源码快照保留用于回退。本轮未安装设备，也未访问真实用户的受权限限制资料；合成页面检查不代表真实用户主页字段/网络验收。
+- 正式 ARM64 包：MT论坛_v1.1.1_arm64.apk，25,217,420 字节，SHA-256 653C2A52EEF95AD5DAB5545D923D02A0F956F6997B376744A497AEAEE740D6DB；aapt 核对 bbs.binmt.cc / 1.1.1+34 / MT论坛，ZIP 仅 arm64-v8a；V2 签名证书摘要仍为 3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975，16KB zipalign 通过。191 个生产源文件与实际构建快照一致。
+- 测试/构建日志 build/author-navigation-tests.log、build/author-navigation-build.log；核验 build/release-verification-code34.json、build/final-apk-signature-code34.txt；新源码快照 build/source-snapshots/v1.1.1+34。旧包 build/rollback/MT论坛_v1.1.0_code33_arm64.apk 哈希与 code33 记录一致，根目录只保留新包。开发文档已同步本机副本，本轮未推送 GitHub。
+
+## 2026-11-03 用户主页完整栏目与主题优先（1.2.0+35）
+- 上轮只把“个人资料”作为用户主页，遗漏主题、广播和留言板，不能视为主页适配完成。现在使用独立 UserHomePage，账号管理仍使用 ForumAccountPage，避免把其他用户主页混入自己的退出登录界面。
+- 默认主题分栏；顶栏使用 ReviewFrostedAppBar + M3 TabBar，主题/广播/留言板/资料在当前路由内切换，磨砂分界在标签栏底部。紧凑身份区展示头像、姓名、等级、签名和官网实际提供的收听/好友/私信入口，注册时间等资料字段收进资料栏。明暗主题、2 倍字体使用同一语义配色与自适应排版；宽屏限制内容阅读宽度。
+- 主题列表沿用 ThreadTile 原生卡片、分页去重和接近列表末尾预取；各栏按需加载并保留列表位置。首次并行读取资料与主题，不等全部资料加载才显示帖子；不会为每个主题额外补拉正文，官网列表不提供摘要时不虚构摘要。Discuz 用户主题表中的最后回复者不能冒充主题作者，作者固定为当前主页用户。
+- 广播/留言按独立数据模型展示作者、时间和正文；移除网页头部导航、重复操作文本与脚本布局，原正文使用共享 HTML 清理结果。广播去重按 feed ID，同一主题的不同广播不能被主题 ID 合并。普通分页仅接收当前用户、当前栏目的同源地址；广播支持官网 getfeed AJAX 主表/归档分页与 CDATA 返回，不执行网页脚本。
+- 互动入口只取官网返回的同源目标，收听写操作先核对登录和当前会话，再读取新的目标/令牌，显式点击后通过 submit 单次提交，不回退浏览器重发；取消收听须确认。好友/私信复用既有原生表单入口。留言用 M3 底部编辑面板，保留实际隐藏字段及 formhash，失败保留输入，不自动重发；有输入时关闭要确认，提交中禁止退出。
+- 新增合成用户资料/主题/广播/留言 fixtures 与 9 项专项测试；121 项主页、文章、账号、收藏历史、导航与字体等相关回归通过，定向静态分析无诊断。包括默认主题、非最后回复者、原位分栏、分页失败保留和去重、AJAX 归档、账号切换迟到响应、留言失败保留和令牌、收听单次请求等。明暗主页预览 docs/preview-user-home-light.png、docs/preview-user-home-dark.png 已目视检查；头像为测试网络失败后的论坛默认头像，不代表真实用户头像加载验收。
+- 协议依据为 Discuz 官方模板源码，非本站当前真实账号验收：
+  - https://raw.githubusercontent.com/DiscuzTeam/DiscuzX/master/upload/template/default/home/space_menu.htm
+  - https://raw.githubusercontent.com/DiscuzTeam/DiscuzX/master/upload/template/default/home/space_thread.htm
+  - https://raw.githubusercontent.com/DiscuzTeam/DiscuzX/master/upload/template/default/home/follow_feed.htm
+  - https://raw.githubusercontent.com/DiscuzTeam/DiscuzX/master/upload/template/default/home/space_wall.htm
+- 本机仍未能读取论坛实际用户主页。未安装设备，未对真实账号执行收听、加好友、私信或留言；真实站点字段差异、可见权限与实际写入结果仍需设备验收。不得把 fixtures 通过当作全站适配完成。
+- 正式包 MT论坛_v1.2.0_arm64.apk，25,282,960 字节，SHA-256 E12C61A452552ADD32BCD1C2528507F1387BECFEE1F03D0F5092B99DBF7FDC05；aapt 核实 bbs.binmt.cc / 1.2.0+35 / MT论坛，ZIP 唯一 ABI arm64-v8a；V2 证书摘要仍为 3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975，16KB zipalign 通过。193 个生产源文件与构建快照哈希一致，pubspec/lock/analyzer 配置也一致。
+- 验收记录 build/release-verification-code35.json、build/final-apk-signature-code35.txt；回归日志 build/user-home-regressions.log，编译日志 build/user-home-build.log。源码快照 build/source-snapshots/v1.2.0+35；旧包 build/rollback/MT论坛_v1.1.1_code34_arm64.apk 哈希与 code34 记录一致。根目录只留新包，开发文档同步本机副本。本轮未推送 GitHub。
+
+## 2026-11-03 用户主页等宽分栏与 Review WebDAV（1.3.0+36）
+- 用户主页四个分栏改用固定宽度 M3 TabBar（isScrollable=false / TabAlignment.fill），每个标签占四分之一；不再沿用滚动分栏的左对齐。长标签允许两行，并按字体大小增加标签行高度；磨砂顶栏分界仍位于分栏底部。
+- 设置新增 WebDAV备份入口，直接适配 Review 的 WebDavBackupPage UI：备份范围说明、全量安全/全量模式、服务器/账号/授权密码/目录四项配置、连接测试，以及备份/恢复操作；复用相同 M3 section card、choice tile 和磨砂顶栏。保留媒体播放器和所有媒体转场。
+- WebDAV 网络服务依据 Review 的 PROPFIND / MKCOL / PUT / GET 流程，独立 Dio 实例不附加论坛 Cookie。默认目录 MT论坛，保留已配置的自定义目录；最新文件 backup_mt_forum_latest.json 和带时间戳的历史文件与 Review 隔离。目录创建失败不继续上传；最新文件上传成功后历史副本尽力保存，与 Review 一致。
+- 只接受 HTTPS 或精确本机地址的 HTTP（localhost、127.0.0.1、::1），不使用宽泛的 localhost 前缀判断；拒绝 URL 内的用户名密码/查询串/片段、上级目录或斜杠目录名。认证请求不跟随重定向，默认 TLS 验证不变。连接/发送/接收有限时，下载按流读取并限制 4MB；损坏、过大、非 MT论坛或未知格式备份不会写入本机。
+- 备份格式 app=bbs.binmt.cc、version=1.0、backup_mode=safe/full，与应用版本独立。备份范围只覆盖 MT论坛已有的显示/字体/触感/自动签到设置、浏览历史及 WebDAV 配置，不加入 Review 业务字段、搜索功能或媒体缓存。已知键严格校验类型、范围与历史链接，未知键忽略。
+- 默认安全备份不读取论坛 Cookie，不导出/恢复 WebDAV 密码或论坛会话；相同 WebDAV 账号的本机密码保持。安全恢复若改变 WebDAV 服务器或账号则清除旧授权密码并提示重新填写，不能把旧密码带到新地址。论坛登录状态仍保持。
+- 全量模式由用户显式选择，页面说明云端 JSON 含明文论坛会话和 WebDAV 密码；切回安全模式不会删除此前的全量历史文件。导出会核对资料 UID 和 auth Cookie 一致性；会话读取失败或账号变化时失败，不降级成缺失凭据的成功备份。
+- 全量恢复先验证备份，再用当前共享 ForumClient 停止旧会话请求、清理已知论坛 Cookie 域/路径，然后导入同源根路径 Cookie 并通过新增原生 flushForumCookies 持久化。CookieManager 无法导出原 Cookie 属性/到期时间，恢复使用 Secure/HttpOnly 会话 Cookie；登录是否仍有效须由论坛校验，未宣称保存原始过期属性。恢复失败尝试回滚原设置与 Cookie，回滚失败明确报错；恢复完成（或全量恢复失败）使旧账号缓存失效。
+- 普通设置与历史恢复后 Preferences.reload 一次性通知界面；不触发启动自动签到。配置密码保存在应用私有 SharedPreferences，Android allowBackup=false；不写日志或源码。恢复先确认，确认阶段不启动无限进度动画；实际操作期间禁止编辑、重复点击和页面返回。
+- 134 项相关回归通过，包括四分栏普通/大字体等宽位置、既有主页/登录/账号/历史与原生页面、WebDAV 安全/全量/未登录备份、恶意格式拒绝、会话失败回滚、跨服务器密码隔离、连接与上传协议、下载限制、恢复确认及操作锁定。定向 analyze 无诊断。预览 docs/preview-user-home-*.png 与 docs/preview-webdav-*.png 已检查；WebDAV 预览使用测试字体替代测试环境 Ahem，不代表真机字体和网络验收。
+- 未安装真机，未连接真实 WebDAV，也未在真实账号上执行会话恢复；Cookie 原属性兼容性、真实云盘服务端差异仍需设备验收。旧 code35 APK 和源码快照保留，新包按新增功能升级到 1.3.0+36。
+- 正式 ARM64 包 MT论坛_v1.3.0_arm64.apk，25,283,644 字节，SHA-256 2CCB0B6836103B56610D4D89F0EE5305E662CCD663C69A47B01A75B20F70002E；aapt 核对 bbs.binmt.cc / 1.3.0+36 / MT论坛，ZIP 唯一 ABI arm64-v8a；V2 证书摘要仍为 3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975，16KB zipalign 通过。196 个生产源文件、构建配置和 MainActivity.kt 与实际编译快照哈希一致。
+- 记录 build/release-verification-code36.json、build/final-apk-signature-code36.txt；回归日志 build/webdav-tab-regressions.log，编译日志 build/webdav-tab-build.log。源码快照 build/source-snapshots/v1.3.0+36 已更新到最终构建；旧包 build/rollback/MT论坛_v1.2.0_code35_arm64.apk 哈希与 code35 记录一致。根目录仅保留新包，文档同步本机副本；本轮未推送 GitHub。
+
+## 2026-11-03 首页快捷按钮与排行榜纵向留白（1.3.1+37）
+- 仅首页四个快捷入口将上下内边距从 20 收至 12，图标、文字和横向布局保持；按钮高度由内容自然决定，不固定裁切大字体。
+- 首页排行榜单行最小高度从 ListTile 默认 56 收至 48，保留原字号、字重、排名、两行标题与点击目标。独立排行榜详情、帖子卡片、分页及动画不受影响。
+- 更新现有首页布局回归的尺寸约束；待必要检查、预览及正式 ARM64 构建核验后补充结果。code36 APK 和源码快照保留回退。
+- 4 项首页定向回归和 1 项明暗预览检查通过，包含排行榜字号/排名/单行高度、快捷按钮尺寸与窄屏两倍字体；3 个相关 Dart 文件 analyze 无诊断。已检查 docs/preview-dark.png 与 docs/preview-ranking-light.png，预览为 fixture 渲染，不代表真实网络或设备验收。
+- 正式 ARM64 包 MT论坛_v1.3.1_arm64.apk，25283648 字节，SHA-256 84A0734E20F977C50EDCB24F9DE130D014EF4D697375DD33037FB5C942BABE30；aapt 核对 bbs.binmt.cc / 1.3.1+37 / MT论坛，唯一 ABI arm64-v8a；V2 原签名与 16KB zipalign 通过。196 个生产源文件及配置、MainActivity.kt 与编译快照一致。核验 build/release-verification-code37.json，构建 build/home-density-build.log，源码 build/source-snapshots/v1.3.1+37；旧 code36 包已校验保留，根目录仅保留新包。本轮未安装真机、未推送 GitHub。
+
+## 2026-11-03 同步 GreenNote 深色液态玻璃选中态（1.3.2+38）
+- 来源为 GreenNote 开发记录第227节及当前 review_navigation_bar.dart 的深色选中态改动；不是整包覆盖或同步其图库重入修复。
+- 首页液态玻璃底栏仅深色选中胶囊 tint 和后备 indicatorColor 改为 0x26FFFFFF，bodyMode 设为 clear；选中图标和标签使用 colorScheme.primary，未选中项保持白色。保留折射率、色散、尺寸和胶囊平移动画。
+- 浅色外壳与 0.55 阴影、浅色选中镜片 rimShade/rimLight 参数、普通底栏及图片播放器不变；不添加新渲染层或调整着色器。
+- 更新现有底栏参数检查，覆盖浅色、深色与纯黑配色；保留 code37 包及源码快照回退，待定向检查、预览和正式包核验。
+- 5 项底栏定向回归通过（胶囊平移/关闭重复按压反馈/360与390宽/浅色、深色、纯黑选中配色），3 个相关 Dart 文件 analyze 无诊断。临时配色预览检查通过，已查看 docs/preview-liquid-glass-dark.png 与 docs/preview-liquid-glass-pureblack.png；使用合成内容和本机字体，不是真机GPU折射或帧率验收。生产源码对比 code37 仅 home_page.dart 与设置页版本文字改变，media_page.dart 及玻璃依赖逐文件不变。
+- 正式 ARM64 包 MT论坛_v1.3.2_arm64.apk，25283648 字节，SHA-256 A38A95AADBBB331C2C61D32C8BBFB7E369525D69F3E3EA5039BAAEB76B2F6C35；aapt 核对 bbs.binmt.cc / 1.3.2+38 / MT论坛，唯一 ABI arm64-v8a；V2 原签名与 16KB zipalign 通过。196 个生产文件及配置、MainActivity.kt 与编译快照一致。核验 build/release-verification-code38.json，构建 build/dark-glass-build.log，源码 build/source-snapshots/v1.3.2+38；旧 code37 包校验保留，根目录仅保留新包。本轮未安装真机、未推送 GitHub。
+
+## 2026-11-03 放大液态玻璃底栏水珠（1.3.3+39）
+- 用户要求水珠纵向略超出底栏边界。Review 的交互扩展态由原48高度加上下各8得到64；MT论坛继续保留仅平移、无重复按压水波纹的交互，直接将静止水珠调至64，高56的底栏外壳保持，上下各突出4。横向宽度、标签、颜色与转场不变，适用于浅色、深色及纯黑液态底栏。
+- 库的 indicatorExpansion 仅在按压/拖动期间生效，不能通过改该参数解决静止水珠大小；未重新启用被用户移除的点击膨胀动画。
+- 为 GlassTabBar.bottom 增加可选 indicatorPadding，下传至底栏布局、指示器及图标遮罩。默认仍为全向4，仅本应用底栏指定横向4/纵向-4。AnimatedGlassIndicator 改以相对定位处理 insets，允许负值向外绘制；JellyClipper 同步该边界及 shouldReclip，避免镜片和选中图标遮罩错位。无需改变共享着色器或全局默认尺寸。
+- 视觉扩展不扩大点击区域，不新增采样层；单个水珠面积因高度从48增至64约增加三分之一。普通底栏、图片播放器、顶栏及其他玻璃组件保持原样。code38包及源码保留回退，待必要检查和ARM64构建核验。
+- 6 项定向检查通过：默认48与扩展64的真实布局、横向位置/宽度保持、图标遮罩与重绘边界、浅色/深色/纯黑水珠上下各突出4、无重复按压反馈、切页动画及360/390宽的触控尺寸；8 个相关 Dart 文件 analyze 无诊断。允许0.02以内的布局误差，避免弹簧微量残差64.00064被误判为尺寸回归。配色预览检查通过，已对照 docs/preview-liquid-glass-dark.png 与 build/rollback/glass-size-before-dark.png，确认水珠超出外壳上下边界。预览使用fixture、本机字体，不等同于真机GPU效果。
+- 正式 ARM64 包 MT论坛_v1.3.3_arm64.apk，25283648 字节，SHA-256 0D70825BE94CFD6397DB9E5CDD4AE514A8437637DB8EAEF796A7CA2F985EC638；aapt 核对 bbs.binmt.cc / 1.3.3+39 / MT论坛，唯一 ABI arm64-v8a；V2 原签名与16KB zipalign通过。196 个生产文件及配置、MainActivity.kt与编译快照一致。核验 build/release-verification-code39.json，构建 build/glass-size-build.log，源码 build/source-snapshots/v1.3.3+39；旧code38包校验保留，根目录仅保留新包。本轮未安装真机、未推送GitHub。
+
+## 2026-11-03 按 Review 实际交互重做水珠（1.3.4+40）
+- 用户否定 code39 常驻64高度的效果，已完整撤销该实验：回滚 indicatorPadding API、负padding定位、JellyClipper改动和对应尺寸断言，玻璃依赖恢复为code38，与当前Review的库源码一致。
+- 复盘：不能把Review的按住/拖动扩展态截取为静止态，也不能只改纵向高度而丢掉横向膨胀、透镜变形、手势节奏和松手回弹。code39记录仅作历史失败案例，不是现行样式规范。
+- 直接提取Review当前ReviewNavigationBar内的液态导航组件，新增review_liquid_navigation_bar.dart；只适配宿主宽度、五个MT入口与本项目触感工具，不引入参考项目的账号或状态管理依赖。
+- 静止态使用原48高镜片和56高外壳；短点按松手提交且不先膨胀，长按220ms或横向拖动后启用horizontal12/vertical8扩展、pinch0.7、pressScale1.06及0x20FFFFFF交互光，松手后250ms复位；快速抛动阈值1000，仅快抛限制相邻项，慢拖按最终位置提交，取消手势不提交，同页长按/拖动不触发回顶。
+- 颜色、折射、色散、质量、内模糊和浅色描边直接沿用Review当前值；五入口宽度沿用MT现有布局。普通底栏、帖子与图片播放器不改。参考项目只读，没有复制其业务代码或改动参考项目文件。
+- 新增真实指针时序回归，覆盖短点、长按、慢拖、快抛、取消和销毁；待定向检查、动态预览和正式ARM64核验。code39包与源码保留回退。
+- 来源核验 build/review-liquid-reference-check.json：移植组件的指针状态处理经去空白比较与Review源码完全一致，规范化SHA-256为61B229EFA8299E8F427CF2C34779B42DE6C50D3E711482CF05DBC27570DD63FA；库lib和shaders共150文件逐一哈希与Review相同。没有保留上一版自造的静止尺寸API。
+- 34项相关检查通过，覆盖5项新增真实指针时序与29项既有首页/底栏/账号/消息/分页/布局回归；5个相关Dart文件analyze无诊断。浅色、深色与纯黑共15张rest/tap80/held/drag/released分帧预览通过，已查看深色rest/held/drag和浅色held；文件docs/preview-review-liquid-*.png。它们是软件测试环境布局与交互检查，不能替代手机GPU折射及帧率验收；没有声称仅凭合成预览已完成真机1:1验收。
+- 正式 ARM64 包 MT论坛_v1.3.4_arm64.apk，25349184 字节，SHA-256 9D1F4E0319E423DD54E536F362C93350C7A00D9619DEBC82FD3685C0C53D4EB5；aapt核对bbs.binmt.cc / 1.3.4+40 / MT论坛，唯一ABI arm64-v8a；V2原签名与16KB zipalign通过。197 个生产文件及配置、MainActivity.kt与实际编译快照一致。核验build/release-verification-code40.json，构建build/review-liquid-build.log，源码build/source-snapshots/v1.3.4+40；code39旧包校验保留，code38回退包仍在。根目录仅保留新包。本轮未安装真机、未推送GitHub。
+
+## 2026-11-03 收藏与浏览历史的批量预览加载（1.3.5+41）
+- 根因：收藏在外层ListView中创建包含整页卡片的Column，每张ThreadTile在首帧后逐项请求摘要并独立setState；历史惰性回收卡片后重新请求。这造成标题、作者、头像、UID和摘要逐项出现，卡片增高、滚动位置与估算范围反复变化。
+- 新增两页共用ThreadCollectionList：每批10条，批量准备完成后一次发布完整卡片；距底部600以内提前准备下一批，后续内容只追加，不在滚动过程中逐张改变已显示卡片。收藏改为真正惰性构建列表，保留分类、管理复选框、原生删除确认及网站分页。
+- 复用ForumClient已有最多2并发摘要队列，不调用隐藏浏览器、不新增接口；页面内以帖子URL复用摘要，卡片回收再进入视野不再重复请求。预览仅存在当前页面内存，不写正文或账号资料到历史/WebDAV数据。
+- 每批最多等待12秒，失败条目保留原始列表并提供显式重试。已超时的响应不会再次悄悄补全和改变行高；刷新失败保留已有摘要。页面销毁、数据替换或账号变化时取消本页计时器并拒绝迟到数据。
+- 历史按会话版本隔离预览，并将历史入口数据规范为标题/链接/副标题，防止内存中上次账号的作者元数据作为新会话的回退显示。ThreadTile支持直接接收已准备摘要，既有其他页面加载方式、头像/用户主页点击区不变。
+- code40包与源码保留回退，待定向并发/延迟/回滚检查及正式ARM64构建。图片播放器与液态底栏保持不变。
+- 摘要请求不再在UI isolate中解析整篇HTML和清洗摘要：ForumClient仍在原请求流程处理同源校验、重定向、Cookie与取消，只把HTML和最终URL交给compute的顶层解析函数，回传纯文本ThreadSummary。两并发队列覆盖请求及解析，避免预取时在UI线程连做大页解析；不向后台isolate传Dio、平台通道或Cookie。
+- 67项收藏/帖子/首页/解析回归通过；随后新增解析isolate返回后再次检查active有效期的用例，最终14项网络/解析检查再次通过（合计覆盖68个不同用例）。8个改动源码/测试文件analyze无诊断。覆盖整批发布、预取追加不改滚动偏移、回滚及重排不重复请求、超时后迟到结果不改行高、显式重试、旧账号数据隔离、删除确认与失败保留，以及既有两并发和同源安全边界。
+- 已查看docs/preview-favorites-dark.png和docs/preview-history-light.png，明暗预览保持现有完整帖子卡片布局；这是fixture与测试字体渲染，不代表真实网络和手机帧率验收。日志build/collection-batch-regressions.log、build/collection-batch-network-tests.log；图片播放器与液态导航组件哈希均与code40一致。
+- 正式ARM64包MT论坛_v1.3.5_arm64.apk，25349184字节，SHA-256 E3EB4F921CF437A03A604F36C6B2028DD5CE81F7766EA8BB066480F5BCF983C0；aapt核对bbs.binmt.cc / 1.3.5+41 / MT论坛，唯一ABI arm64-v8a；V2原签名与16KB zipalign通过。198 个生产文件及配置、MainActivity.kt与实际编译快照一致。核验build/release-verification-code41.json，构建build/collection-batch-build.log，源码build/source-snapshots/v1.3.5+41；code40旧包校验保留，根目录仅保留新包。本轮未安装真机、未进行真实网络帧耗时测量、未推送GitHub。
+
+## 2026-11-03 设置分割线、本人主页与我的帖子（1.3.6+42）
+- 移除个性化页外观与字体功能项间的两处Divider。检查偏好行、WebDAV与账号子页没有其他功能项Divider；文本框边框和磨砂顶栏下沿保持用途不变，不全局删除论坛帖子分隔线。
+- 本人资料入口原先分流到旧ForumAccountPage，未使用新版主页。保留其本人身份解析、错误重试与退出确认，将成功状态接到同一UserHomePage，默认主题且共用等宽四分栏/广播/留言板/资料。复用首次响应的资料以避免再次请求；退出按钮只保留一份，隐藏本人页的收听自己/加好友操作。
+- 本人账号壳监听会话版本，重新定位当前账号，拦截旧响应；本人主页不重复监听会话，避免旧UID与新账号混用。公开用户主页的固定目标UID行为不变。
+- 我的帖子原先把网站delform当普通填写表单。新增ForumMyPosts模型解析官方.tbmu和.tl结构，原生状态/内容二级顶栏、帖子卡片及分页；保持同页筛选，不推新路由，不显示填写信息、HTML链接或最后回复者假作者。
+- 主题复用批量预览列表，继续在后台解析、整批发布；回复/点评保留服务器返回的自己的内容，不用原帖首楼摘要代替回复，也不为这些行请求原帖预览。回复链接保留安全的ptid/pid定位参数。
+- 状态和内容分栏只使用同源返回的链接，规范化为本人view=me，剔除UID、站外链接及非列表动作；页码校验为正整数。官方结构依据：https://raw.githubusercontent.com/DiscuzTeam/DiscuzX/master/upload/template/default/home/space_thread.htm 。未宣称已实测当前论坛所有登录态模板。
+- code41包与源码保留回退，待定向解析、导航、账号及布局检查与正式ARM64构建核验。
+- 100项本人主页/公开主页/帖子/设置/账号/消息/收藏历史回归通过。最终6项本人入口与我的帖子检查（含新增1项明暗/两倍字号布局预览）再次通过，11个改动源码及测试文件analyze无诊断。覆盖本人主页只读一次资料、四分栏共用、换号重新定位UID、状态/内容/分页原位切换、回复不冒用首楼及保留pid、迟到结果隔离，以及已有退出失败/确认和文章入口行为。
+- 已查看docs/preview-own-home-dark.png、preview-own-home-large.png、preview-my-posts-light.png和preview-my-posts-large.png。两级帖子分栏不画中间额外横线，磨砂分界只在最低分栏下沿；排名页分栏保持原样。预览使用合成账号及测试字体，不能替代真实登录会话和设备验收。日志build/my-account-posts-regressions.log、build/my-account-posts-final-tests.log；图片播放器和液态导航组件哈希与code41一致。
+- 最终ARM64包MT论坛_v1.3.6_arm64.apk，25349208字节，SHA-256 989868D989CC754C31566BC6A4EC9EFB7ECA308BF5DC4C05DE2031806AAF5DA9；aapt核对bbs.binmt.cc / 1.3.6+42 / MT论坛，唯一ABI arm64-v8a；V2原签名与16KB zipalign通过。198 个生产文件及配置、MainActivity.kt与实际编译快照一致。核验build/release-verification-code42.json，构建build/my-account-posts-build.log，源码build/source-snapshots/v1.3.6+42；code41旧包校验保留，根目录仅保留新包。本轮未安装真机、未使用真实账号验收、未推送GitHub。
+
+## 2026-11-03 我的帖子空筛选误报修复（1.3.7+43）
+- 根因不是仅凭此错误就能判断账号掉线：ForumUserContent 的主题分支发现 .tl 就调用 parseForum；官方空结果仍有 .tl/delform/table，但只有 .emp 提示，没有帖子链接，parseForum 因此抛出通用“页面未返回可识别的论坛内容”。新增官方空表结构fixture先复现了完全相同的错误堆栈（build/empty-filter-reproduction.log）。此前测试所有筛选都返回非空主题，漏测了空列表。
+- Discuz 官方 filter=common（已发表）仅含未关闭且正常发表的主题；全部中有已关闭主题不代表已发表必有结果。依据官方 space_thread.php 与 space_thread.htm，不改变网站筛选语义，不伪造帖子或把登录/权限错误吞成空列表。
+- 在共享 ForumUserContent 中先识别列表内非空 .emp 提示，正常空表不再进入必须存在帖子链接的解析器；我的帖子各状态/主题/回复/点评及公开用户主题页共用此修复。真实登录表单、403/验证页、缺少空表标记或标记无文字的未知响应仍报错；未放宽 parseForum 的全局验证。
+- 沿用原生空状态及两层分栏，可原位切换其他筛选和全部；空结果不启动帖子预览请求。无新增网络请求、定时器或依赖；账号变化代次保护及已有批量摘要加载不变。
+- 版本同步为1.3.7+43，code42 APK校验保留回退，源码保留在原v1.3.6+42快照。待必要回归、静态分析及正式ARM64构建核验；真实账号和设备尚未验收。
+- 81项相关回归通过（我的帖子/用户主页/原生账号消息入口/论坛解析），新增覆盖全部7种状态与3类内容的空表、空列表切回全部、空结果不请求摘要，以及登录表单/403/未知结构拒绝。变更的3个Dart文件静态分析无诊断。未使用真实账号和真机验收；不以fixture通过推断当前账号的已发表数量。
+- 正式ARM64包MT论坛_v1.3.7_arm64.apk，25349208字节，SHA-256 4A845A644DA73BC562FAC6B4BA212A97757E115E3262B46098C870D34F3969C7；aapt核对bbs.binmt.cc / 1.3.7+43，唯一ABI arm64-v8a；V2原签名与16KB zipalign通过。198个生产文件及配置、MainActivity.kt与实际编译快照一致。生产差异仅共享空表识别和设置版本文字，图片播放器/液态导航未改。核验build/release-verification-code43.json，日志build/empty-filter-build.log，源码build/source-snapshots/v1.3.7+43；code42包校验保留回退。本轮未安装真机、未使用真实账号验收、未推送GitHub。
+
+## 2026-11-03 我的帖子分栏层级及筛选状态修复（1.3.8+44）
+- 复盘：上次只修了空表解析，漏掉内容类型与状态筛选的关系。官网点评页不返回状态行，原实现把状态当一级导航导致整行消失；类型链接不带当前filter，切换主题/回复时退回全部。TabBar点击回调还立即重置到旧index，加载期间造成选中态回跳。
+- 按M3层级将主题/回复/点评固定为一级等宽三分栏，全部/已发表等状态作为二级。点评遵循官方不支持状态筛选的能力，去掉其无效二级状态入口；一级内容分栏始终保持位置。主题与回复切换保留筛选，点评请求剔除filter，离开点评恢复本页最后一次成功的主题/回复筛选，换号清除该记忆。
+- 状态切换保持内容类型，分页基于当前已提交类型/状态规范生成，切换分栏从第一页开始。所有目标仍限制同源本人列表；账号、权限、空表与验证边界保持。依据官方space_thread.htm的viewtype != postcomment分支及space_thread.php的点评查询，不伪造点评状态分类。
+- 点击时保留用户刚选的指示器，加载期间暂时禁用分栏点击与键盘焦点；成功提交新分栏/内容，失败恢复上一列表URI和选中项。排行榜原有切换行为不变。两层控制器的key加入行索引，避免规范链接相同导致重复key。
+- 新测试使用真实结构差异：点评响应没有.tbmu .y状态区，类型链接不带filter。覆盖延迟/失败切换、状态保留、点评来回、分页、原位导航及换号隔离；待相关回归、明暗/两倍字体预览与正式ARM64核验。code43 APK已校验保留回退，图片播放器及液态底栏不改。
+- 83项相关回归通过，4个改动Dart文件analyze无诊断。已查看docs/preview-my-posts-dark.png、preview-my-comments-light.png及preview-my-comments-large.png；明暗与两倍字号检查包括一级三栏中心等距且位置固定、点评只有一级分栏、磨砂分界位于最后一行下沿。预览使用合成账号和测试字体，不等同于真实账号/手机验收。测试build/my-posts-tabs-regressions.log，分析build/my-posts-tabs-analyze.log。
+- 正式ARM64包MT论坛_v1.3.8_arm64.apk，25349208字节，SHA-256 9A1867384416D2874E0BFEDF0AB0044F37753D10995DA9A383CDB5131A333B0C；aapt核对bbs.binmt.cc / 1.3.8+44，唯一ABI arm64-v8a；V2原签名与16KB zipalign通过。198个生产文件及配置、MainActivity.kt与实际编译快照一致。生产差异仅我的帖子模型/分栏交互及设置版本文字；图片播放器与液态导航保持code43。核验build/release-verification-code44.json，构建build/my-posts-tabs-build.log，源码build/source-snapshots/v1.3.8+44；code43包已校验保留，根目录只留最新包。本轮未安装真机、未使用真实账号验收、未推送GitHub。

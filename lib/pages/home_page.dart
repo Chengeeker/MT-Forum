@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../core/design_system/components/review_frosted_app_bar.dart';
+import '../core/design_system/components/review_liquid_navigation_bar.dart';
 import '../core/design_system/components/review_preference_tile.dart';
 import '../core/utils/haptic_feedback_util.dart';
 import '../core/widgets/app_section_card.dart';
@@ -16,6 +17,7 @@ import 'login_page.dart';
 import 'native_forum_page.dart';
 import 'settings_page.dart';
 import 'web_page.dart';
+import 'thread_collection_list.dart';
 import '../data/native_forum.dart';
 
 const boards = <(String, String, IconData)>[
@@ -607,6 +609,7 @@ class _HomePageState extends State<HomePage> {
                 child: view == 'hot'
                     ? ListTile(
                         contentPadding: EdgeInsets.zero,
+                        minTileHeight: 48,
                         leading: SizedBox(
                           width: 24,
                           child: Text(
@@ -687,7 +690,7 @@ class _HomePageState extends State<HomePage> {
                     onTap: item.$3,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        vertical: 20,
+                        vertical: 12,
                         horizontal: 2,
                       ),
                       child: Column(
@@ -1028,7 +1031,10 @@ class _HomePageState extends State<HomePage> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
-                  builder: (_) => SettingsPage(preferences: widget.preferences),
+                  builder: (_) => SettingsPage(
+                    preferences: widget.preferences,
+                    client: widget.client,
+                  ),
                 ),
               ),
             ),
@@ -1073,125 +1079,26 @@ class _HomePageState extends State<HomePage> {
       );
     }
     if (!widget.preferences.liquidGlass) return floatingNavigationBar();
-    final theme = Theme.of(context);
-    final isLightMode = theme.brightness == Brightness.light;
-    const baseGlassSettings = LiquidGlassSettings(
-      glassColor: Color(0x66000000),
-      bodyMode: GlassBodyMode.clear,
-      thickness: 10,
-      blur: 2,
-      lightIntensity: 0.25,
-      ambientStrength: 0,
-      refractiveIndex: 1.19,
-      chromaticAberration: 0.008,
-      shadowElevation: 0,
-    );
-    final glassSettings = isLightMode
-        ? baseGlassSettings.copyWith(
-            glassColor: const Color(0xF0FFFFFF),
-            rimLight: 1,
-            shadowElevation: 0.55,
-          )
-        : baseGlassSettings;
-    final indicatorSettings = isLightMode
-        ? const LiquidGlassSettings(
-            glassColor: Color(0x18000000),
-            bodyMode: GlassBodyMode.clear,
-            refractiveIndex: 1.18,
-            chromaticAberration: 0.025,
-            rimShade: 0.12,
-            rimLight: 0.35,
-          )
-        : const LiquidGlassSettings(
-            refractiveIndex: 1.18,
-            chromaticAberration: 0.025,
-          );
-    final colorScheme = theme.colorScheme;
-    return SafeArea(
-      bottom: false,
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.paddingOf(context).bottom > 0 ? 6 : 14,
-          ),
-          child: RepaintBoundary(
-            child: SizedBox(
-              width: floatingNavigationWidth,
-              height: 56,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: GlassTabBar.bottom(
-                      tabs: const [
-                        GlassTab(
-                          icon: Icon(Icons.home_outlined),
-                          activeIcon: Icon(Icons.home_rounded),
-                          label: '首页',
-                        ),
-                        GlassTab(icon: Icon(Icons.search), label: '发现'),
-                        GlassTab(icon: Icon(Icons.add), label: '发帖'),
-                        GlassTab(icon: Icon(Icons.mail_outline), label: '消息'),
-                        GlassTab(
-                          icon: Icon(Icons.person_outline),
-                          activeIcon: Icon(Icons.person),
-                          label: '我的',
-                        ),
-                      ],
-                      selectedIndex: tab,
-                      onTabSelected: selectTab,
-                      barHeight: 56,
-                      horizontalPadding: 0,
-                      verticalPadding: 0,
-                      barBorderRadius: 9999,
-                      indicatorBorderRadius: 9999,
-                      settings: glassSettings,
-                      indicatorSettings: indicatorSettings,
-                      quality: GlassQuality.premium,
-                      backgroundQuality: GlassQuality.premium,
-                      maskingQuality: MaskingQuality.high,
-                      enableBlend: true,
-                      innerBlur: 6,
-                      interactionBehavior: GlassInteractionBehavior.none,
-                      indicatorPinchStrength: 0,
-                      indicatorColor: isLightMode
-                          ? const Color(0x26000000)
-                          : const Color(0x66000000),
-                      selectedIconColor: isLightMode
-                          ? colorScheme.primary
-                          : Colors.white,
-                      selectedLabelColor: isLightMode
-                          ? colorScheme.primary
-                          : Colors.white,
-                      unselectedIconColor: isLightMode
-                          ? colorScheme.onSurfaceVariant
-                          : Colors.white,
-                      unselectedLabelColor: isLightMode
-                          ? colorScheme.onSurfaceVariant
-                          : Colors.white,
-                    ),
-                  ),
-                  if (isLightMode)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          key: const ValueKey('liquid-glass-light-rim'),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(9999),
-                            border: Border.all(
-                              color: const Color(0xF5FFFFFF),
-                              width: 1,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+    return ReviewLiquidNavigationBar(
+      selectedIndex: tab,
+      onSelected: selectTab,
+      hasBottomInset: MediaQuery.paddingOf(context).bottom > 0,
+      width: floatingNavigationWidth,
+      tabs: const [
+        GlassTab(
+          icon: Icon(Icons.home_outlined),
+          activeIcon: Icon(Icons.home_rounded),
+          label: '首页',
         ),
-      ),
+        GlassTab(icon: Icon(Icons.search), label: '发现'),
+        GlassTab(icon: Icon(Icons.add), label: '发帖'),
+        GlassTab(icon: Icon(Icons.mail_outline), label: '消息'),
+        GlassTab(
+          icon: Icon(Icons.person_outline),
+          activeIcon: Icon(Icons.person),
+          label: '我的',
+        ),
+      ],
     );
   }
 
@@ -1569,21 +1476,18 @@ class HistoryPage extends StatelessWidget {
       ),
       body: preferences.history.isEmpty
           ? const Center(child: Text('还没有浏览记录'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: preferences.history.length,
-              itemBuilder: (context, index) {
-                final link = preferences.history[index];
+          : ThreadCollectionList(
+              key: ValueKey(sessionRevision.value),
+              links: [
+                for (final item in preferences.history)
+                  ForumLink(item.title, item.url, subtitle: item.subtitle),
+              ],
+              client: client,
+              itemBuilder: (index, link, summary) {
                 return ThreadTile(
                   key: ValueKey('${sessionRevision.value}:${link.url}'),
                   link: link,
-                  loadSummary: (active) {
-                    final revision = sessionRevision.value;
-                    return client.threadSummary(
-                      link.url,
-                      () => active() && revision == sessionRevision.value,
-                    );
-                  },
+                  summary: summary,
                   onTap: (selected) =>
                       openForum(context, selected, client, preferences),
                 );

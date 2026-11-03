@@ -126,6 +126,9 @@ class MainActivity : FlutterActivity() {
                     result.error("origin", "Forum origin required", null)
                 } else if (call.method == "cookies") {
                     result.success(CookieManager.getInstance().getCookie(url) ?: "")
+                } else if (call.method == "flushForumCookies") {
+                    CookieManager.getInstance().flush()
+                    result.success(null)
                 } else if (call.method == "setCookie") {
                     val cookie = call.argument<String>("cookie")
                     if (cookie == null) result.error("cookie", "Cookie required", null)

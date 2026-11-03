@@ -10,6 +10,8 @@ import 'package:html/parser.dart' as html;
 import 'package:mt_forum/data/forum.dart';
 import 'package:mt_forum/data/native_forum.dart';
 import 'package:mt_forum/data/preferences.dart';
+import 'package:mt_forum/data/sign_in.dart';
+import 'package:mt_forum/main.dart';
 import 'package:mt_forum/pages/login_page.dart';
 import 'package:mt_forum/pages/native_forum_page.dart';
 import 'package:mt_forum/pages/account_page.dart';
@@ -36,7 +38,11 @@ class NativeClient extends ForumClient {
       return '<a href="member.php?mod=register213">立即注册</a>';
     }
     if (url.contains('do=profile')) {
-      return '<div id="uhd"><h2>测试账号</h2></div><div id="ct"><div class="mn"><div class="area"></div><div class="bm"><h2>测试账号 (UID: 123)</h2><ul><li><em>用户组</em>测试组</li><li><em>积分</em>100</li><li><em>注册 IP</em>192.0.2.1</li></ul></div></div></div>';
+      final uid = Uri.parse(url).queryParameters['uid'] ?? '123';
+      return '<div id="uhd"><h2>测试账号</h2></div><div id="ct"><div class="mn"><div class="area"></div><div class="bm"><h2>测试账号 (UID: $uid)</h2><ul><li><em>用户组</em>测试组</li><li><em>积分</em>100</li><li><em>注册 IP</em>192.0.2.1</li></ul></div></div></div>';
+    }
+    if (url.contains('do=thread')) {
+      return File('test/fixtures/user-topics.html').readAsStringSync();
     }
     return url.contains('action=reply') || url.contains('action=newthread')
         ? (url.contains('repquote=')
@@ -61,8 +67,11 @@ class NativeClient extends ForumClient {
 }
 
 class SignClient extends NativeClient {
-  bool signed = false, reject = false;
+  bool signed = false, reject = false, confirmWrites = true;
   int writes = 0;
+  @override
+  Future<ForumDocument> load(String url) async =>
+      const ForumDocument(title: 'MT论坛');
   @override
   Future<String> source(String url) async {
     requests.add(url);
@@ -82,7 +91,7 @@ class SignClient extends NativeClient {
   }) async {
     writes++;
     if (reject) throw const ForumFailure('模拟签到失败');
-    signed = true;
+    signed = confirmWrites;
     return ('<div id="messagetext">签到成功</div>', action);
   }
 }
@@ -203,6 +212,103 @@ class CancellingAdapter implements HttpClientAdapter {
 }
 
 void main() {
+  test('自动签到偏好默认关闭且持久化', () async {
+    final store = await SharedPreferences.getInstance();
+    final prefs = Preferences(store);
+    expect(prefs.autoSignIn, isFalse);
+    prefs.autoSignIn = true;
+    await prefs.save();
+    expect(Preferences(store).autoSignIn, isTrue);
+  });
+  test('后台签到合并并发事务，已签到不再提交', () async {
+    final client = SignClient();
+    final first = signInIfNeeded(client, canSubmit: () async => true);
+    final second = signInIfNeeded(client, canSubmit: () async => true);
+    expect(identical(first, second), isTrue);
+    expect((await first).signIn!.signedIn, isTrue);
+    await second;
+    await signInIfNeeded(client, canSubmit: () async => true);
+    expect(client.writes, 1);
+  });
+  test('后台签到取消、失败不自动重试', () async {
+    final client = SignClient();
+    await expectLater(
+      signInIfNeeded(client, canSubmit: () async => false),
+      throwsA(isA<ForumFailure>()),
+    );
+    expect(client.writes, 0);
+    client.reject = true;
+    await expectLater(
+      signInIfNeeded(client, canSubmit: () async => true),
+      throwsA(isA<ForumFailure>()),
+    );
+    expect(client.writes, 1);
+  });
+  test('后台签到不把写请求成功当作已签到，也不提交未知页面', () async {
+    final client = SignClient()..confirmWrites = false;
+    await expectLater(
+      signInIfNeeded(client, canSubmit: () async => true),
+      throwsA(isA<ForumFailure>()),
+    );
+    expect(client.writes, 1);
+    final unknown = NativeClient();
+    await expectLater(
+      signInIfNeeded(unknown, canSubmit: () async => true),
+      throwsA(isA<ForumFailure>()),
+    );
+    expect(unknown.submitted, isNull);
+  });
+  testWidgets('游客启动不会执行后台签到或弹出登录页', (tester) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(ForumClient.platform, (_) async => '');
+    final client = SignClient();
+    final prefs = Preferences(await SharedPreferences.getInstance())
+      ..autoSignIn = true;
+    await tester.pumpWidget(
+      MtForumApp(preferences: prefs, client: client, useBrowserReader: false),
+    );
+    await tester.pumpAndSettle();
+    expect(client.requests, isEmpty);
+    expect(client.writes, 0);
+    expect(find.byType(ForumLoginPage), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  for (final enabled in [false, true]) {
+    testWidgets('启动后台签到开关 $enabled 不打开签到页或重复执行', (tester) async {
+      final client = SignClient();
+      final prefs = Preferences(await SharedPreferences.getInstance())
+        ..autoSignIn = enabled;
+      await tester.pumpWidget(
+        MtForumApp(preferences: prefs, client: client, useBrowserReader: false),
+      );
+      await tester.pumpAndSettle();
+      expect(client.writes, enabled ? 1 : 0);
+      expect(find.byType(ForumSignInView), findsNothing);
+      prefs.color = 3;
+      await prefs.save();
+      await tester.pumpAndSettle();
+      expect(client.writes, enabled ? 1 : 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  test('签到后显示排名也识别为已签到，未知状态不冒充成功', () {
+    final source = File('test/fixtures/sign.html').readAsStringSync();
+    for (final status in ['您今天的签到排名', '您今天已签过到']) {
+      final data = NativeForumDocument(
+        source.replaceAll('您今天还没有签到', status),
+        forumUri('k_misign-sign.html'),
+      );
+      expect(data.signIn!.signedIn, isTrue);
+      expect(data.signAction, isNull);
+    }
+    final unknown = NativeForumDocument(
+      source
+          .replaceAll('您今天还没有签到', '暂不可用')
+          .replaceFirst(RegExp(r'<a id="JD_sign"[\s\S]*?</a>'), ''),
+      forumUri('k_misign-sign.html'),
+    );
+    expect(unknown.signIn!.signedIn, isFalse);
+  });
   test('签到模型恢复 CSS 数字并隔离隐藏数字、网页面包屑', () {
     final data = NativeForumDocument(
       File('test/fixtures/sign.html').readAsStringSync(),
@@ -277,7 +383,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, '立即签到'));
       await tester.pumpAndSettle();
       expect(client.writes, 1);
-      expect(find.text(reject ? '立即签到' : '今日已签到'), findsOneWidget);
+      expect(find.text(reject ? '立即签到' : '当前已签到'), findsOneWidget);
       if (reject) expect(find.textContaining('未自动重试'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -589,7 +695,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(ForumWebPage), findsNothing);
-      expect(client.requests, hasLength(path.contains('mod=register') ? 2 : 1));
+      expect(
+        client.requests,
+        hasLength(
+          path.contains('mod=register') || path.contains('do=profile') ? 2 : 1,
+        ),
+      );
       expect(tester.takeException(), isNull);
     });
   }
@@ -675,13 +786,16 @@ void main() {
     );
   });
 
-  testWidgets('账号资料原生显示名称 UID 和积分，不依赖 HTML 布局', (tester) async {
+  testWidgets('本人主页默认主题，资料分栏可看积分并保留退出入口', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: ForumAccountPage(client: NativeClient())),
     );
     await tester.pumpAndSettle();
-    expect(find.text('测试账号'), findsOneWidget);
+    expect(find.text('测试账号'), findsWidgets);
     expect(find.text('UID: 123'), findsOneWidget);
+    expect(find.text('我的第一个主题'), findsOneWidget);
+    await tester.tap(find.text('资料'));
+    await tester.pumpAndSettle();
     expect(find.text('积分'), findsOneWidget);
     expect(find.text('100'), findsOneWidget);
     expect(find.text('192.0.2.1'), findsNothing);

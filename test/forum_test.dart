@@ -29,6 +29,7 @@ class Adapter implements HttpClientAdapter {
 }
 
 class SummaryAdapter implements HttpClientAdapter {
+  final first = Completer<void>();
   final pending = <Completer<ResponseBody>>[];
   final firstTwo = Completer<void>(), third = Completer<void>();
   int active = 0, maximum = 0;
@@ -42,6 +43,7 @@ class SummaryAdapter implements HttpClientAdapter {
     if (active > maximum) maximum = active;
     final value = Completer<ResponseBody>();
     pending.add(value);
+    if (pending.length == 1) first.complete();
     if (pending.length == 2) firstTwo.complete();
     if (pending.length == 3) third.complete();
     try {
@@ -150,6 +152,34 @@ void main() {
     );
     expect(browserReads, 0);
   });
+  test('后台摘要解析完成后仍须校验条目和账号有效期', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(ForumClient.platform, (_) async => '');
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(ForumClient.platform, null),
+    );
+    final adapter = SummaryAdapter();
+    final client = ForumClient(dio: Dio()..httpClientAdapter = adapter);
+    var checks = 0;
+    final rejected = expectLater(
+      client.threadSummary(
+        '$forumOrigin/thread-1-1-1.html',
+        () => ++checks < 3,
+      ),
+      throwsA(isA<ForumFailure>()),
+    );
+    await adapter.first.future.timeout(const Duration(seconds: 3));
+    adapter.pending.single.complete(
+      ResponseBody.fromString(
+        File('test/fixtures/thread.html').readAsStringSync(),
+        200,
+      ),
+    );
+    await rejected;
+    expect(checks, 3);
+  });
+
   test('帖子详情读取真实头像、默认头像、用户组及摘要点赞', () {
     final data = parseForum(
       File('test/fixtures/thread.html').readAsStringSync(),
@@ -195,7 +225,10 @@ void main() {
     expect(data.links.first.pinned, isTrue);
     final link = data.links.last;
     expect(link.author, '测试作者');
-    expect(link.profile, 'https://bbs.binmt.cc/space-uid-123.html');
+    expect(
+      link.profile,
+      'https://bbs.binmt.cc/home.php?mod=space&do=profile&uid=123',
+    );
     expect(link.imageUrl, 'https://cdn.binmt.cc/avatar.jpg');
     expect(link.views, '12815');
     expect(link.replies, '103');

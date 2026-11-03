@@ -10,6 +10,7 @@ import 'package:mt_forum/data/preferences.dart';
 import 'package:mt_forum/pages/forum_page.dart';
 import 'package:mt_forum/pages/media_page.dart';
 import 'package:mt_forum/pages/native_forum_page.dart';
+import 'package:mt_forum/pages/user_home_page.dart';
 import 'package:mt_forum/core/widgets/forum_avatar.dart';
 import 'package:mt_forum/core/widgets/app_section_card.dart';
 
@@ -99,6 +100,111 @@ class NoticeThreadClient extends ThreadClient {
 }
 
 void main() {
+  test('作者地址只解析用户主页，空链接和文章链接不能回到文章', () {
+    final base = forumUri('thread-123-1-1.html');
+    for (final href in ['', '#', base.toString(), 'javascript:;']) {
+      expect(forumUserProfile(href, base), isEmpty);
+      final target = Uri.parse(forumUserProfile(href, base, username: '测试作者'));
+      expect(target.path, '/home.php');
+      expect(target.queryParameters['username'], '测试作者');
+    }
+    final doc = parseForum(
+      '<div id="post_1"><div class="pls"><div class="authi">'
+      '<a href="">无效链接</a><a href="space-uid-456.html">真正作者</a>'
+      '</div></div><div id="postmessage_1">正文</div></div>',
+      base,
+    );
+    expect(doc.posts.single.author, '真正作者');
+    expect(Uri.parse(doc.posts.single.profile).queryParameters['uid'], '456');
+  });
+  testWidgets('卡片头像和用户名独立打开用户主页，正文仍打开帖子', (tester) async {
+    final selected = <ForumLink>[];
+    const link = ForumLink(
+      '卡片文章标题',
+      'https://bbs.binmt.cc/thread-123-1-1.html',
+      author: '卡片作者',
+      profile: 'https://bbs.binmt.cc/space-uid-123.html',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ThreadTile(link: link, onTap: selected.add),
+        ),
+      ),
+    );
+    await tester.tap(find.byType(ForumAvatar));
+    await tester.pump();
+    await tester.tap(find.text('卡片作者'));
+    await tester.pump();
+    expect(selected.length, 2);
+    expect(
+      selected.every(
+        (item) => Uri.parse(item.url).queryParameters['uid'] == '123',
+      ),
+      isTrue,
+    );
+    await tester.tap(find.text('卡片文章标题'));
+    expect(selected.length, 3);
+    expect(selected.last.url, link.url);
+  });
+  testWidgets('详情顶栏与回复楼头像和名字均打开对应原生用户主页', (tester) async {
+    tester.view.physicalSize = const Size(600, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ForumPage(
+          link: const ForumLink(
+            '示例帖子',
+            'https://bbs.binmt.cc/thread-123-1-1.html',
+          ),
+          client: ThreadClient(),
+          preferences: Preferences(await SharedPreferences.getInstance()),
+          initialDocument: parseForum(
+            File('test/fixtures/thread.html').readAsStringSync(),
+            forumUri('thread-123-1-1.html'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final (target, uid) in <(Finder, String)>[
+      (
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.byType(ForumAvatar),
+        ),
+        '123',
+      ),
+      (find.text('测试作者'), '123'),
+      (
+        find.descendant(
+          of: find
+              .ancestor(
+                of: find.text('默认头像用户'),
+                matching: find.byType(AppSectionCard),
+              )
+              .first,
+          matching: find.byType(ForumAvatar),
+        ),
+        '456',
+      ),
+      (find.text('默认头像用户'), '456'),
+    ]) {
+      await tester.ensureVisible(target);
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+      final page = tester.widget<UserHomePage>(find.byType(UserHomePage));
+      expect(page.uri.queryParameters['uid'], uid);
+      expect(find.text('用户主页'), findsOneWidget);
+      expect(find.text('UID: $uid'), findsOneWidget);
+      expect(find.text('退出登录'), findsNothing);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     SharedPreferences.setMockInitialValues({});

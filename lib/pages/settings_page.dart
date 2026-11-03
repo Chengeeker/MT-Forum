@@ -7,10 +7,13 @@ import '../core/design_system/components/review_switch_tile.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/app_section_card.dart';
 import '../data/preferences.dart';
+import '../data/forum.dart';
+import 'webdav_backup_page.dart';
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key, required this.preferences});
+  const SettingsPage({super.key, required this.preferences, this.client});
   final Preferences preferences;
+  final ForumClient? client;
 
   String fontWeightName(int value) => switch (value) {
     -100 => '偏细',
@@ -90,7 +93,6 @@ class SettingsPage extends StatelessWidget {
                       preferences.save();
                     },
                   ),
-                const Divider(height: 1),
                 ReviewSwitchTile(
                   title: '纯黑模式',
                   summary: '深色主题使用纯黑背景',
@@ -127,7 +129,6 @@ class SettingsPage extends StatelessWidget {
                   leading: const Icon(Icons.format_bold_rounded),
                   onTap: () => showFontWeightDialog(context),
                 ),
-                const Divider(height: 1, indent: 56),
                 ListTile(
                   leading: const Icon(Icons.format_size_rounded),
                   title: const Text('应用字体大小'),
@@ -223,6 +224,16 @@ class SettingsPage extends StatelessWidget {
             child: Column(
               children: [
                 ReviewSwitchTile(
+                  title: '自动签到',
+                  summary: '每次启动应用时，在后台检查并完成当日签到',
+                  leading: const Icon(Icons.event_available_outlined),
+                  value: preferences.autoSignIn,
+                  onChanged: (value) {
+                    preferences.autoSignIn = value;
+                    preferences.save();
+                  },
+                ),
+                ReviewSwitchTile(
                   title: '触感反馈',
                   value: preferences.haptics,
                   onChanged: (value) {
@@ -231,13 +242,27 @@ class SettingsPage extends StatelessWidget {
                   },
                 ),
                 ReviewPreferenceTile(
+                  title: 'WebDAV备份',
+                  subtitle: '应用设置、浏览历史的云端备份与恢复',
+                  leading: const Icon(Icons.cloud_sync_rounded),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => WebDavBackupPage(
+                        preferences: preferences,
+                        client: client ?? ForumClient(),
+                      ),
+                    ),
+                  ),
+                ),
+                ReviewPreferenceTile(
                   title: '关于 MT论坛',
-                  subtitle: '1.0.0 · Material 3',
+                  subtitle: '1.3.8 · Material 3',
                   leading: const Icon(Icons.info_outline),
                   onTap: () => showAboutDialog(
                     context: context,
                     applicationName: 'MT论坛',
-                    applicationVersion: '1.0.0',
+                    applicationVersion: '1.3.8',
                     children: [
                       const Text(
                         '第三方论坛客户端。论坛账号与内容由 bbs.binmt.cc 提供。界面组件复用 Review（MIT，© 2026 Chengeeker）。',
