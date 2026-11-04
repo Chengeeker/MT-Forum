@@ -97,13 +97,11 @@ class HapticFeedbackUtil {
   }
 }
 
-/// Adds one global light feedback at Material pointer-down time. Business
+/// Adds one global light feedback without painting Material touch ink. Business
 /// callbacks consume that event through [HapticFeedbackUtil], so a normal
 /// InkWell/ListTile/IconButton tap still feels global without double vibration.
 class HapticSplashFactory extends InteractiveInkFeatureFactory {
-  final InteractiveInkFeatureFactory _delegate;
-
-  const HapticSplashFactory({this._delegate = InkSplash.splashFactory});
+  const HapticSplashFactory();
 
   @override
   InteractiveInkFeature create({
@@ -120,17 +118,10 @@ class HapticSplashFactory extends InteractiveInkFeatureFactory {
     VoidCallback? onRemoved,
   }) {
     HapticFeedbackUtil.light(fromSplash: true);
-    return _delegate.create(
+    return NoSplash(
       controller: controller,
       referenceBox: referenceBox,
-      position: position,
       color: color,
-      textDirection: textDirection,
-      containedInkWell: containedInkWell,
-      rectCallback: rectCallback,
-      borderRadius: borderRadius,
-      customBorder: customBorder,
-      radius: radius,
       onRemoved: onRemoved,
     );
   }

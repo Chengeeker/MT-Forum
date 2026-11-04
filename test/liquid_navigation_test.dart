@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:mt_forum/core/design_system/components/review_liquid_navigation_bar.dart';
+import 'package:mt_forum/core/theme/app_theme.dart';
 
 const _tabs = [
   GlassTab(icon: Icon(Icons.home), label: '首页'),
@@ -20,7 +21,7 @@ Future<Rect> _mount(WidgetTester tester, List<int> selections) async {
   addTearDown(selected.dispose);
   await tester.pumpWidget(
     MaterialApp(
-      theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+      theme: AppTheme.darkTheme(),
       home: ValueListenableBuilder<int>(
         valueListenable: selected,
         builder: (context, index, _) => Scaffold(

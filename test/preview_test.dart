@@ -353,7 +353,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('UID: 123'), findsOneWidget);
-      expect(find.text('退出登录'), findsOneWidget);
+      expect(find.text('退出登录'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.runAsync(() async {
         final image =

@@ -873,11 +873,13 @@ void main() {
     final revision = sessionRevision.value;
     await tester.pumpWidget(
       MaterialApp(
-        home: Builder(
-          builder: (context) => TextButton(
-            onPressed: () async =>
-                result = await showForumLogin(context, client),
-            child: const Text('打开登录'),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async =>
+                  result = await showForumLogin(context, client),
+              child: const Text('打开登录'),
+            ),
           ),
         ),
       ),
@@ -930,11 +932,13 @@ void main() {
     bool? result;
     await tester.pumpWidget(
       MaterialApp(
-        home: Builder(
-          builder: (context) => TextButton(
-            onPressed: () async =>
-                result = await showForumLogin(context, client),
-            child: const Text('打开登录'),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async =>
+                  result = await showForumLogin(context, client),
+              child: const Text('打开登录'),
+            ),
           ),
         ),
       ),
@@ -1235,6 +1239,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('我的').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('设置'));
+    await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('个性化'));
     await tester.tap(find.text('个性化'));

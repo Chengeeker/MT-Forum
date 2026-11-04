@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/design_system/components/review_frosted_app_bar.dart';
+import '../core/utils/account_status.dart';
 import '../core/widgets/app_section_card.dart';
 import '../data/forum.dart';
 import '../data/native_forum.dart';
@@ -45,10 +46,6 @@ Future<bool> logoutForum(
     }
     forumAuthenticated.value = false;
     sessionRevision.value++;
-    if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已退出登录')));
-    }
     return true;
   } catch (_) {
     if (context.mounted) {
@@ -148,7 +145,14 @@ class _ForumAccountPageState extends State<ForumAccountPage> {
     );
     if (!mounted) return;
     if (success) {
+      final messenger = ScaffoldMessenger.of(context);
+      final route = ModalRoute.of(context);
+      messenger
+        ..clearSnackBars()
+        ..removeCurrentSnackBar();
       Navigator.pop(context);
+      await route?.completed;
+      showAccountStatus(messenger, '已退出登录');
     } else {
       setState(() => signingOut = false);
     }
@@ -184,7 +188,6 @@ class _ForumAccountPageState extends State<ForumAccountPage> {
         title: '我的主页',
         ownAccount: true,
         initialHome: initialHome,
-        bottomNavigationBar: logoutButton(),
       );
     }
     return Scaffold(

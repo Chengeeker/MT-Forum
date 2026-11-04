@@ -786,7 +786,7 @@ void main() {
     );
   });
 
-  testWidgets('本人主页默认主题，资料分栏可看积分并保留退出入口', (tester) async {
+  testWidgets('本人主页默认主题，资料分栏可看积分且不重复设置退出入口', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: ForumAccountPage(client: NativeClient())),
     );
@@ -799,7 +799,7 @@ void main() {
     expect(find.text('积分'), findsOneWidget);
     expect(find.text('100'), findsOneWidget);
     expect(find.text('192.0.2.1'), findsNothing);
-    expect(find.widgetWithText(OutlinedButton, '退出登录'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '退出登录'), findsNothing);
     expect(find.byType(ForumWebPage), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -826,15 +826,17 @@ void main() {
     final before = sessionRevision.value;
     await tester.pumpWidget(
       MaterialApp(
-        home: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => ForumAccountPage(client: client),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => ForumAccountPage(client: client),
+                ),
               ),
+              child: const Text('进入账号'),
             ),
-            child: const Text('进入账号'),
           ),
         ),
       ),

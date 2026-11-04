@@ -702,6 +702,9 @@ class _ForumPageState extends State<ForumPage> {
               initialIndex: index,
               heroTagPrefix: heroTagPrefix,
               useLiquidGlass: widget.preferences.liquidGlass,
+              preferences: widget.preferences,
+              client: widget.client,
+              author: post.author,
             ),
             transitionsBuilder: (_, animation, _, child) =>
                 FadeTransition(opacity: animation, child: child),
@@ -735,14 +738,20 @@ class _ForumPageState extends State<ForumPage> {
     );
   }
 
-  Widget videoCard(Uri uri, String title) => Padding(
+  Widget videoCard(Uri uri, String title, String author) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: AppSectionCard(
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (_) => ForumVideoPage(url: uri, title: title),
+            builder: (_) => ForumVideoPage(
+              url: uri,
+              title: title,
+              preferences: widget.preferences,
+              client: widget.client,
+              author: author,
+            ),
           ),
         ),
         child: Padding(
@@ -888,8 +897,13 @@ class _ForumPageState extends State<ForumPage> {
                       if (isDirectVideoUri(uri)) {
                         await Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) =>
-                                ForumVideoPage(url: uri, title: '论坛视频'),
+                            builder: (_) => ForumVideoPage(
+                              url: uri,
+                              title: '论坛视频',
+                              preferences: widget.preferences,
+                              client: widget.client,
+                              author: post.author,
+                            ),
                           ),
                         );
                         return true;
@@ -912,7 +926,11 @@ class _ForumPageState extends State<ForumPage> {
                           element.classes.contains('forum-video')) {
                         final uri = forumUri(element.attributes['href'] ?? '');
                         if (isDirectVideoUri(uri)) {
-                          return videoCard(uri, element.text.trim());
+                          return videoCard(
+                            uri,
+                            element.text.trim(),
+                            post.author,
+                          );
                         }
                       }
                       if (element.localName == 'a') {

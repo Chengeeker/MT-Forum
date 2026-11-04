@@ -12,6 +12,9 @@ import 'package:video_player/video_player.dart';
 import '../core/design_system/components/review_frosted_app_bar.dart';
 import '../core/utils/haptic_feedback_util.dart';
 import '../data/forum.dart';
+import '../data/preferences.dart';
+import '../data/media_storage.dart';
+import '../data/image_cache_maintenance.dart';
 
 class ForumImageGalleryPage extends StatefulWidget {
   const ForumImageGalleryPage({
@@ -21,6 +24,9 @@ class ForumImageGalleryPage extends StatefulWidget {
     required this.initialIndex,
     required this.heroTagPrefix,
     this.useLiquidGlass = false,
+    this.preferences,
+    this.client,
+    this.author = '',
   });
 
   final List<String> images;
@@ -28,13 +34,20 @@ class ForumImageGalleryPage extends StatefulWidget {
   final int initialIndex;
   final String heroTagPrefix;
   final bool useLiquidGlass;
+  final Preferences? preferences;
+  final ForumClient? client;
+  final String author;
 
   @override
   State<ForumImageGalleryPage> createState() => _ForumImageGalleryPageState();
 }
 
-class _ForumImageGalleryPageState extends State<ForumImageGalleryPage> {
+class _ForumImageGalleryPageState extends State<ForumImageGalleryPage>
+    with SingleTickerProviderStateMixin {
   late final ExtendedPageController controller;
+  late final AnimationController zoomController;
+  ExtendedImageGestureState? zoomTarget;
+  Offset? zoomPosition;
   late int currentIndex;
   bool saving = false;
   bool isReturning = false;
@@ -54,6 +67,7 @@ class _ForumImageGalleryPageState extends State<ForumImageGalleryPage> {
 
   void onRouteAnimationStatus(AnimationStatus status) {
     final returning = status == AnimationStatus.reverse;
+    if (returning) stopZoom();
     if (!mounted || returning == isReturning) return;
     setState(() => isReturning = returning);
   }
@@ -63,12 +77,83 @@ class _ForumImageGalleryPageState extends State<ForumImageGalleryPage> {
     super.initState();
     currentIndex = widget.initialIndex.clamp(0, widget.images.length - 1);
     controller = ExtendedPageController(initialPage: currentIndex);
+    zoomController = AnimationController.unbounded(vsync: this)
+      ..addListener(() {
+        final target = zoomTarget;
+        if (target == null || !target.mounted) return;
+        scaleImage(target, zoomController.value);
+      });
+  }
+
+  void scaleImage(ExtendedImageGestureState state, double scale) {
+    final details = state.gestureDetails;
+    final rect = details?.destinationRect;
+    final rawRect = details?.rawDestinationRect;
+    final box = state.context.findRenderObject();
+    final position = zoomPosition;
+    if (details == null ||
+        rect == null ||
+        rawRect == null ||
+        box is! RenderBox ||
+        position == null) {
+      return;
+    }
+    final focalPoint = box.globalToLocal(position);
+    final center =
+        focalPoint + (rect.center - focalPoint) * (scale / details.totalScale!);
+    // Recompute bounds for this scale instead of inheriting the old axis flags.
+    state.gestureDetails = GestureDetails(
+      totalScale: scale,
+      offset: center - rawRect.center * scale,
+      actionType: ActionType.zoom,
+    );
+  }
+
+  void stopZoom() {
+    zoomController.stop();
+    zoomTarget = null;
+  }
+
+  void doubleTapImage(ExtendedImageGestureState state) {
+    stopZoom();
+    HapticFeedbackUtil.light();
+    final scale = state.gestureDetails?.totalScale ?? 1;
+    final image = state.widget.extendedImageState.extendedImageInfo?.image;
+    final isLongPic = image != null && image.height / image.width > 2.0;
+    final double targetScale;
+    if (scale <= 1.05) {
+      targetScale = isLongPic ? 3.5 : 2.5;
+    } else if (scale <= 3.6) {
+      targetScale = 6.0;
+    } else {
+      targetScale = 1.0;
+    }
+    zoomPosition = state.pointerDownPosition;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      scaleImage(state, targetScale);
+      return;
+    }
+    zoomTarget = state;
+    zoomController.value = scale;
+    zoomController.animateTo(
+      targetScale,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
   void dispose() {
     routeAnimation?.removeStatusListener(onRouteAnimationStatus);
+    zoomController.dispose();
     controller.dispose();
+    if (widget.preferences != null) {
+      unawaited(
+        ImageCacheMaintenance.checkAndAutoClear(
+          widget.preferences!.imageCacheThresholdMb,
+        ),
+      );
+    }
     super.dispose();
   }
 
@@ -84,6 +169,12 @@ class _ForumImageGalleryPageState extends State<ForumImageGalleryPage> {
     HapticFeedbackUtil.light();
     setState(() => saving = true);
     try {
+      final album = await MediaStorage.album(
+        preferences: widget.preferences,
+        client: widget.client,
+        video: false,
+        author: widget.author,
+      );
       final response =
           await Dio(
             BaseOptions(
@@ -129,15 +220,21 @@ class _ForumImageGalleryPageState extends State<ForumImageGalleryPage> {
         'fileName':
             'mt_forum_${DateTime.now().millisecondsSinceEpoch}.$extension',
         'mimeType': mime,
+        'album': album,
       });
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('已保存到图片相册')));
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('保存失败，请检查网络或存储权限')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error is ForumFailure ? error.toString() : '保存失败，请检查网络或存储权限',
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => saving = false);
@@ -151,55 +248,49 @@ class _ForumImageGalleryPageState extends State<ForumImageGalleryPage> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          ExtendedImageGesturePageView.builder(
-            controller: controller,
-            itemCount: widget.images.length,
-            onPageChanged: (index) => setState(() => currentIndex = index),
-            itemBuilder: (context, index) {
-              final url = widget.images[index];
-              final previewUrl = index < widget.previews.length
-                  ? widget.previews[index]
-                  : url;
-              return Hero(
-                tag: heroTag(index),
-                child: ExtendedImage.network(
-                  url,
-                  headers: forumMediaHeaders(Uri.parse(url)),
-                  fit: BoxFit.contain,
-                  mode: ExtendedImageMode.gesture,
-                  enableSlideOutPage: false,
-                  initGestureConfigHandler: (_) => GestureConfig(
-                    minScale: 1,
-                    maxScale: 5,
-                    initialScale: 1,
-                    inPageView: true,
-                  ),
-                  loadStateChanged: (state) {
-                    if (state.extendedImageLoadState == LoadState.loading) {
-                      return Image.network(
-                        previewUrl,
-                        key: ValueKey('gallery-loading-preview-$index'),
-                        headers: forumMediaHeaders(Uri.parse(previewUrl)),
-                        fit: BoxFit.contain,
-                        loadingBuilder: (_, child, progress) => progress == null
-                            ? child
-                            : const Center(child: CircularProgressIndicator()),
-                        errorBuilder: (_, _, _) => const Center(
-                          child: Icon(
-                            Icons.broken_image_outlined,
-                            color: Colors.white70,
-                            size: 44,
-                          ),
-                        ),
-                      );
-                    }
-                    if (state.extendedImageLoadState == LoadState.failed) {
-                      if (previewUrl != url) {
+          Listener(
+            onPointerDown: (_) => stopZoom(),
+            child: ExtendedImageGesturePageView.builder(
+              controller: controller,
+              itemCount: widget.images.length,
+              onPageChanged: (index) {
+                stopZoom();
+                setState(() => currentIndex = index);
+              },
+              itemBuilder: (context, index) {
+                final url = widget.images[index];
+                final previewUrl = index < widget.previews.length
+                    ? widget.previews[index]
+                    : url;
+                return Hero(
+                  tag: heroTag(index),
+                  child: ExtendedImage.network(
+                    url,
+                    headers: forumMediaHeaders(Uri.parse(url)),
+                    fit: BoxFit.contain,
+                    mode: ExtendedImageMode.gesture,
+                    onDoubleTap: doubleTapImage,
+                    enableSlideOutPage: false,
+                    initGestureConfigHandler: (_) => GestureConfig(
+                      minScale: 1,
+                      maxScale: 8,
+                      animationMaxScale: 9,
+                      initialScale: 1,
+                      inPageView: true,
+                    ),
+                    loadStateChanged: (state) {
+                      if (state.extendedImageLoadState == LoadState.loading) {
                         return Image.network(
                           previewUrl,
                           key: ValueKey('gallery-loading-preview-$index'),
                           headers: forumMediaHeaders(Uri.parse(previewUrl)),
                           fit: BoxFit.contain,
+                          loadingBuilder: (_, child, progress) =>
+                              progress == null
+                              ? child
+                              : const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
                           errorBuilder: (_, _, _) => const Center(
                             child: Icon(
                               Icons.broken_image_outlined,
@@ -209,19 +300,36 @@ class _ForumImageGalleryPageState extends State<ForumImageGalleryPage> {
                           ),
                         );
                       }
-                      return const Center(
-                        child: Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.white70,
-                          size: 44,
-                        ),
-                      );
-                    }
-                    return null;
-                  },
-                ),
-              );
-            },
+                      if (state.extendedImageLoadState == LoadState.failed) {
+                        if (previewUrl != url) {
+                          return Image.network(
+                            previewUrl,
+                            key: ValueKey('gallery-loading-preview-$index'),
+                            headers: forumMediaHeaders(Uri.parse(previewUrl)),
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, _, _) => const Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: Colors.white70,
+                                size: 44,
+                              ),
+                            ),
+                          );
+                        }
+                        return const Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white70,
+                            size: 44,
+                          ),
+                        );
+                      }
+                      return null;
+                    },
+                  ),
+                );
+              },
+            ),
           ),
           if (!widget.useLiquidGlass || !isReturning)
             Positioned(
@@ -401,10 +509,20 @@ class _ForumGalleryActionButton extends StatelessWidget {
 }
 
 class ForumVideoPage extends StatefulWidget {
-  const ForumVideoPage({super.key, required this.url, required this.title});
+  const ForumVideoPage({
+    super.key,
+    required this.url,
+    required this.title,
+    this.preferences,
+    this.client,
+    this.author = '',
+  });
 
   final Uri url;
   final String title;
+  final Preferences? preferences;
+  final ForumClient? client;
+  final String author;
 
   @override
   State<ForumVideoPage> createState() => _ForumVideoPageState();
@@ -414,7 +532,46 @@ class _ForumVideoPageState extends State<ForumVideoPage> {
   static const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
   VideoPlayerController? controller;
   bool failed = false;
+  CancelToken? saveToken;
   double speed = 1;
+
+  Future<void> saveVideo() async {
+    if (saveToken != null) {
+      saveToken!.cancel();
+      return;
+    }
+    final token = CancelToken();
+    setState(() => saveToken = token);
+    try {
+      await MediaStorage.saveVideo(
+        widget.url,
+        preferences: widget.preferences,
+        client: widget.client,
+        author: widget.author,
+        cancelToken: token,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已保存到视频相册')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              token.isCancelled
+                  ? '已取消保存'
+                  : error is ForumFailure
+                  ? error.toString()
+                  : '保存失败，请检查网络、存储权限和视频大小（上限512 MB）',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => saveToken = null);
+    }
+  }
 
   @override
   void initState() {
@@ -424,6 +581,7 @@ class _ForumVideoPageState extends State<ForumVideoPage> {
 
   @override
   void dispose() {
+    saveToken?.cancel();
     unawaited(controller?.dispose());
     super.dispose();
   }
@@ -468,6 +626,24 @@ class _ForumVideoPageState extends State<ForumVideoPage> {
       foregroundColor: Colors.white,
       systemOverlayStyle: SystemUiOverlayStyle.light,
       title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      actions: [
+        if (MediaStorage.canSaveVideo(widget.url)) ...[
+          if (saveToken != null)
+            const Center(
+              child: SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          IconButton(
+            tooltip: saveToken == null ? '保存视频' : '取消保存',
+            onPressed: saveVideo,
+            icon: Icon(
+              saveToken == null ? Icons.download_rounded : Icons.close,
+            ),
+          ),
+        ],
+      ],
     ),
     body: Stack(
       children: [

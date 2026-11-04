@@ -20,25 +20,35 @@ import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private var fileResult: MethodChannel.Result? = null
-    private data class GallerySave(val bytes: ByteArray, val name: String, val mime: String, val result: MethodChannel.Result)
+    private data class GallerySave(val bytes: ByteArray?, val name: String, val mime: String, val result: MethodChannel.Result, val album: String = "MT论坛", val source: File? = null)
     private var pendingGallerySave: GallerySave? = null
     private val mediaExecutor = Executors.newSingleThreadExecutor()
 
-    private fun saveImage(bytes: ByteArray, name: String, mime: String, result: MethodChannel.Result) {
+    private fun saveMedia(item: GallerySave) {
         mediaExecutor.execute {
+            val name = item.name
+            val mime = item.mime
+            val result = item.result
+            val video = mime.startsWith("video/")
+            val base = if (video) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
+            fun writeTo(output: java.io.OutputStream) {
+                if (item.source != null) item.source.inputStream().use { it.copyTo(output) }
+                else output.write(item.bytes ?: throw IllegalStateException("Missing media data"))
+            }
             try {
                 val path = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val relativePath = "${Environment.DIRECTORY_PICTURES}/MT论坛"
+                    val relativePath = "$base/${item.album}"
                     val values = ContentValues().apply {
                         put(MediaStore.MediaColumns.DISPLAY_NAME, name)
                         put(MediaStore.MediaColumns.MIME_TYPE, mime)
                         put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
                         put(MediaStore.MediaColumns.IS_PENDING, 1)
                     }
-                    val uri = contentResolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+                    val collection = if (video) MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) else MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    val uri = contentResolver.insert(collection, values)
                         ?: throw IllegalStateException("MediaStore insert failed")
                     try {
-                        contentResolver.openOutputStream(uri, "w")?.use { it.write(bytes) }
+                        contentResolver.openOutputStream(uri, "w")?.use { writeTo(it) }
                             ?: throw IllegalStateException("MediaStore stream unavailable")
                         contentValuesForComplete().also { contentResolver.update(uri, it, null, null) }
                     } catch (error: Exception) {
@@ -47,10 +57,12 @@ class MainActivity : FlutterActivity() {
                     }
                     "$relativePath/$name"
                 } else {
-                    val directory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "MT论坛")
+                    val directory = File(Environment.getExternalStoragePublicDirectory(base), item.album)
                     if (!directory.exists() && !directory.mkdirs()) throw IllegalStateException("Cannot create Pictures directory")
                     val file = File(directory, name)
-                    FileOutputStream(file).use { it.write(bytes) }
+                    if (file.exists()) throw IllegalStateException("Media file already exists")
+                    try { FileOutputStream(file).use { writeTo(it) } }
+                    catch (error: Exception) { file.delete(); throw error }
                     android.media.MediaScannerConnection.scanFile(this, arrayOf(file.absolutePath), arrayOf(mime), null)
                     file.absolutePath
                 }
@@ -83,11 +95,15 @@ class MainActivity : FlutterActivity() {
                 }
                 if (call.method == "saveMediaToGallery") {
                     val bytes = call.argument<ByteArray>("bytes")
-                    if (bytes == null) {
-                        result.error("INVALID_ARGS", "Invalid image data", null)
-                        return@setMethodCallHandler
+                    val sourcePath = call.argument<String>("sourcePath")
+                    val paths = try { Pair(sourcePath?.let { File(it).canonicalFile }, File(cacheDir, "media-downloads").canonicalFile) }
+                        catch (_: Exception) { result.error("INVALID_ARGS", "Invalid media path", null); return@setMethodCallHandler }
+                    val source = paths.first
+                    val downloadRoot = paths.second
+                    if (source != null && (bytes != null || !source.path.startsWith(downloadRoot.path + File.separator) || !source.isFile || source.length() <= 0 || source.length() > 512L * 1024 * 1024)) {
+                        result.error("INVALID_ARGS", "Invalid downloaded video", null); return@setMethodCallHandler
                     }
-                    if (bytes.isEmpty() || bytes.size > 64 * 1024 * 1024) {
+                    if (source == null && (bytes == null || bytes.isEmpty() || bytes.size > 64 * 1024 * 1024)) {
                         result.error("INVALID_ARGS", "Invalid image data", null)
                         return@setMethodCallHandler
                     }
@@ -95,7 +111,7 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_ARGS", "Invalid file name", null)
                         return@setMethodCallHandler
                     }
-                    if (!fileName.matches(Regex("[A-Za-z0-9._-]{1,100}"))) {
+                    if (fileName in setOf(".", "..") || !fileName.matches(Regex("[A-Za-z0-9._-]{1,100}"))) {
                         result.error("INVALID_ARGS", "Invalid file name", null)
                         return@setMethodCallHandler
                     }
@@ -103,20 +119,27 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_ARGS", "Invalid image type", null)
                         return@setMethodCallHandler
                     }
-                    if (imageMime !in setOf("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp")) {
+                    val allowed = if (source == null) setOf("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp") else setOf("video/mp4", "video/webm", "video/quicktime", "video/x-matroska")
+                    if (imageMime !in allowed) {
                         result.error("INVALID_ARGS", "Invalid image type", null)
                         return@setMethodCallHandler
                     }
+                    val album = call.argument<String>("album") ?: "MT论坛"
+                    val leaf = album.removePrefix("MT论坛/")
+                    if (album != "MT论坛" && (!album.startsWith("MT论坛/") || leaf in setOf(".", "..") || !leaf.matches(Regex("[^\\\\/:*?\"<>|\\p{Cntrl}]{1,80}")))) {
+                        result.error("INVALID_ARGS", "Invalid album", null); return@setMethodCallHandler
+                    }
+                    val item = GallerySave(bytes, fileName, imageMime, result, album, source)
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
                         checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                         if (pendingGallerySave != null) {
                             result.error("BUSY", "A gallery save is already awaiting permission", null)
                             return@setMethodCallHandler
                         }
-                        pendingGallerySave = GallerySave(bytes, fileName, imageMime, result)
+                        pendingGallerySave = item
                         requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 4202)
                     } else {
-                        saveImage(bytes, fileName, imageMime, result)
+                        saveMedia(item)
                     }
                     return@setMethodCallHandler
                 }
@@ -159,7 +182,7 @@ class MainActivity : FlutterActivity() {
         val pending = pendingGallerySave ?: return
         pendingGallerySave = null
         if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            saveImage(pending.bytes, pending.name, pending.mime, pending.result)
+            saveMedia(pending)
         } else {
             pending.result.error("PERMISSION_DENIED", "Storage permission denied", null)
         }

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/design_system/components/review_frosted_app_bar.dart';
 import '../core/design_system/components/review_switch_tile.dart';
+import '../core/utils/account_status.dart';
 import '../core/widgets/app_section_card.dart';
 import '../data/forum.dart';
 import '../data/preferences.dart';
@@ -23,14 +24,24 @@ Future<bool> showForumLogin(
   if (!force && initial.isNotEmpty) return true;
   if (!context.mounted) return false;
   final before = sessionRevision.value;
-  final result = await Navigator.of(context).push<bool>(
-    MaterialPageRoute<bool>(builder: (_) => ForumLoginPage(client: client)),
+  final route = MaterialPageRoute<bool>(
+    builder: (_) => ForumLoginPage(client: client),
   );
+  final result = await Navigator.of(context).push<bool>(route);
   // Back/cancel can race a successful server response; reconcile the shared session.
   final after = await forumAuthCookie();
   final authenticated = after.isNotEmpty;
   if (authenticated && sessionRevision.value == before) sessionRevision.value++;
-  return result == true || (authenticated && (!force || initial != after));
+  final success =
+      result == true || (authenticated && (!force || initial != after));
+  if (success) {
+    // Show on the destination scaffold after the returning route has left.
+    await route.completed;
+    if (context.mounted) {
+      showAccountStatus(ScaffoldMessenger.of(context), '登录成功');
+    }
+  }
+  return success;
 }
 
 Future<void> openForumWeb(
@@ -196,15 +207,15 @@ class _ForumLoginPageState extends State<ForumLoginPage> {
         return (before, message, await forumAuthCookie());
       })().timeout(const Duration(seconds: 45));
       if (!mounted || attempt != loginAttempt) return;
-      final (before, message, after) = result;
+      final (before, _, after) = result;
       if (after.isEmpty) {
         throw const ForumFailure('论坛没有建立登录会话，请检查账号信息后重试。');
       }
       if (before != after) sessionRevision.value++;
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(message)));
+        ..clearSnackBars()
+        ..removeCurrentSnackBar();
       Navigator.of(context).pop(true);
     } on TimeoutException {
       await widget.client.cancelLogin();
@@ -276,6 +287,9 @@ class _ForumLoginPageState extends State<ForumLoginPage> {
       final after = await forumAuthCookie();
       if (!mounted || after.isEmpty) return;
       if (before != after) sessionRevision.value++;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..removeCurrentSnackBar();
       Navigator.of(context).pop(true);
     } finally {
       qqOpening = false;

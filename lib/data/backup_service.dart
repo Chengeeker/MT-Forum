@@ -17,7 +17,14 @@ class ForumBackupService {
     'haptics',
     'autoSignIn',
   };
-  static const intKeys = {'themeMode', 'color', 'fontWeightAdjustment'};
+  static const intKeys = {
+    'themeMode',
+    'color',
+    'fontWeightAdjustment',
+    'imageSavePathType',
+    'videoSavePathType',
+    'imageCacheThresholdMb',
+  };
   static const stringKeys = {
     'history',
     'webdav_url',
@@ -109,6 +116,13 @@ class ForumBackupService {
           : value is String;
       if (!valid) throw const FormatException('备份设置类型无效');
       if (entry.key == 'themeMode' && (value < 0 || value > 2) ||
+          const {
+                'imageSavePathType',
+                'videoSavePathType',
+              }.contains(entry.key) &&
+              (value < 0 || value > 2) ||
+          entry.key == 'imageCacheThresholdMb' &&
+              !Preferences.cacheThresholds.contains(value) ||
           entry.key == 'color' && (value < 0 || value > 7) ||
           entry.key == 'fontWeightAdjustment' &&
               !Preferences.fontWeightAdjustments.contains(value)) {

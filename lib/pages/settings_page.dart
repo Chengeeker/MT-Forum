@@ -8,7 +8,6 @@ import '../core/theme/app_theme.dart';
 import '../core/widgets/app_section_card.dart';
 import '../data/preferences.dart';
 import '../data/forum.dart';
-import 'webdav_backup_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key, required this.preferences, this.client});
@@ -73,7 +72,7 @@ class SettingsPage extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const Padding(
-            padding: EdgeInsets.only(left: 8, bottom: 12),
+            padding: EdgeInsetsDirectional.only(start: 16, bottom: 12),
             child: Text('外观'),
           ),
           AppSectionCard(
@@ -116,7 +115,7 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           const Padding(
-            padding: EdgeInsets.only(left: 8, bottom: 12),
+            padding: EdgeInsetsDirectional.only(start: 16, bottom: 12),
             child: Text('字体'),
           ),
           AppSectionCard(
@@ -153,7 +152,7 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           const Padding(
-            padding: EdgeInsets.only(left: 8, bottom: 12),
+            padding: EdgeInsetsDirectional.only(start: 16, bottom: 12),
             child: Text('底部导航'),
           ),
           AppSectionCard(
@@ -170,7 +169,7 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           const Padding(
-            padding: EdgeInsets.only(left: 8, bottom: 12),
+            padding: EdgeInsetsDirectional.only(start: 16, bottom: 12),
             child: Text('显示效果'),
           ),
           AppSectionCard(
@@ -190,12 +189,12 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           const Padding(
-            padding: EdgeInsets.only(left: 8, bottom: 12),
+            padding: EdgeInsetsDirectional.only(start: 16, bottom: 12),
             child: Text('主题颜色'),
           ),
           AppSectionCard(
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -224,51 +223,12 @@ class SettingsPage extends StatelessWidget {
             child: Column(
               children: [
                 ReviewSwitchTile(
-                  title: '自动签到',
-                  summary: '每次启动应用时，在后台检查并完成当日签到',
-                  leading: const Icon(Icons.event_available_outlined),
-                  value: preferences.autoSignIn,
-                  onChanged: (value) {
-                    preferences.autoSignIn = value;
-                    preferences.save();
-                  },
-                ),
-                ReviewSwitchTile(
                   title: '触感反馈',
                   value: preferences.haptics,
                   onChanged: (value) {
                     preferences.haptics = value;
                     preferences.save();
                   },
-                ),
-                ReviewPreferenceTile(
-                  title: 'WebDAV备份',
-                  subtitle: '应用设置、浏览历史的云端备份与恢复',
-                  leading: const Icon(Icons.cloud_sync_rounded),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => WebDavBackupPage(
-                        preferences: preferences,
-                        client: client ?? ForumClient(),
-                      ),
-                    ),
-                  ),
-                ),
-                ReviewPreferenceTile(
-                  title: '关于 MT论坛',
-                  subtitle: '1.3.8 · Material 3',
-                  leading: const Icon(Icons.info_outline),
-                  onTap: () => showAboutDialog(
-                    context: context,
-                    applicationName: 'MT论坛',
-                    applicationVersion: '1.3.8',
-                    children: [
-                      const Text(
-                        '第三方论坛客户端。论坛账号与内容由 bbs.binmt.cc 提供。界面组件复用 Review（MIT，© 2026 Chengeeker）。',
-                      ),
-                    ],
-                  ),
                 ),
               ],
             ),

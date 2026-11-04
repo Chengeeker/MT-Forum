@@ -14,6 +14,7 @@ import 'core/theme/app_text_scaler.dart';
 import 'data/forum.dart';
 import 'data/preferences.dart';
 import 'data/sign_in.dart';
+import 'data/image_cache_maintenance.dart';
 import 'pages/home_page.dart';
 import 'pages/web_page.dart';
 
@@ -67,6 +68,13 @@ class _MtForumAppState extends State<MtForumApp> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(autoSignIn());
+      if (mounted) {
+        unawaited(
+          ImageCacheMaintenance.checkAndAutoClear(
+            widget.preferences.imageCacheThresholdMb,
+          ),
+        );
+      }
     });
   }
 

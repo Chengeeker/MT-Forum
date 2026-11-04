@@ -359,7 +359,7 @@ void main() {
     expect(find.text('我的主页'), findsOneWidget);
     expect(find.byType(Tab), findsNWidgets(4));
     expect(find.text('我的第一个主题'), findsOneWidget);
-    expect(find.text('退出登录'), findsOneWidget);
+    expect(find.text('退出登录'), findsNothing);
     expect(find.text('收听TA'), findsNothing);
     expect(find.text('加为好友'), findsNothing);
     expect(
@@ -388,7 +388,7 @@ void main() {
     expect(page.uri.queryParameters['uid'], '789');
     expect(find.text('木棉'), findsNothing);
     expect(find.text('当前本人'), findsWidgets);
-    expect(find.text('退出登录'), findsOneWidget);
+    expect(find.text('退出登录'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

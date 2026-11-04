@@ -209,6 +209,7 @@ class _ReviewLiquidNavigationBarState extends State<ReviewLiquidNavigationBar> {
       bottom: false,
       child: Align(
         alignment: Alignment.bottomCenter,
+        heightFactor: 1,
         child: Padding(
           padding: EdgeInsets.only(bottom: widget.hasBottomInset ? 6 : 14),
           child: RepaintBoundary(

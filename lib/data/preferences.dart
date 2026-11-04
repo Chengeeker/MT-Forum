@@ -25,6 +25,12 @@ class Preferences extends ChangeNotifier {
         : 0;
     haptics = store.getBool('haptics') ?? true;
     autoSignIn = store.getBool('autoSignIn') ?? false;
+    imageSavePathType = (store.getInt('imageSavePathType') ?? 0).clamp(0, 2);
+    videoSavePathType = (store.getInt('videoSavePathType') ?? 0).clamp(0, 2);
+    final threshold = store.getInt('imageCacheThresholdMb') ?? 200;
+    imageCacheThresholdMb = cacheThresholds.contains(threshold)
+        ? threshold
+        : 200;
     HapticFeedbackUtil.isEnabled = haptics;
     try {
       history = (jsonDecode(store.getString('history') ?? '[]') as List)
@@ -48,6 +54,8 @@ class Preferences extends ChangeNotifier {
       haptics = true;
   double textScale = 1;
   bool autoSignIn = false;
+  int imageSavePathType = 0, videoSavePathType = 0, imageCacheThresholdMb = 200;
+  static const cacheThresholds = [0, 50, 100, 200, 500, 1024, 2048];
   int fontWeightAdjustment = 0;
   static const fontWeightAdjustments = [-100, 0, 100, 200, 300];
   List<ForumLink> history = [];
@@ -65,6 +73,9 @@ class Preferences extends ChangeNotifier {
       store.setInt('fontWeightAdjustment', fontWeightAdjustment),
       store.setBool('haptics', haptics),
       store.setBool('autoSignIn', autoSignIn),
+      store.setInt('imageSavePathType', imageSavePathType),
+      store.setInt('videoSavePathType', videoSavePathType),
+      store.setInt('imageCacheThresholdMb', imageCacheThresholdMb),
     ]);
   }
 

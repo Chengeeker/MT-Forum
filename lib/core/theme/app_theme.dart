@@ -279,6 +279,55 @@ class AppTheme {
     );
   }
 
+  static final _noPressedOverlay = WidgetStateProperty.resolveWith<Color?>(
+    (states) =>
+        states.contains(WidgetState.pressed) ? Colors.transparent : null,
+  );
+
+  static ThemeData _withoutTouchInk(ThemeData theme) {
+    final buttonStyle = ButtonStyle(overlayColor: _noPressedOverlay);
+    return theme.copyWith(
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      filledButtonTheme: FilledButtonThemeData(style: buttonStyle),
+      elevatedButtonTheme: ElevatedButtonThemeData(style: buttonStyle),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: buttonStyle),
+      textButtonTheme: TextButtonThemeData(style: buttonStyle),
+      iconButtonTheme: IconButtonThemeData(style: buttonStyle),
+      segmentedButtonTheme: SegmentedButtonThemeData(style: buttonStyle),
+      tabBarTheme: theme.tabBarTheme.copyWith(overlayColor: _noPressedOverlay),
+      searchBarTheme: theme.searchBarTheme.copyWith(
+        overlayColor: _noPressedOverlay,
+      ),
+      navigationBarTheme: theme.navigationBarTheme.copyWith(
+        overlayColor: _noPressedOverlay,
+      ),
+      checkboxTheme: theme.checkboxTheme.copyWith(
+        overlayColor: _noPressedOverlay,
+      ),
+      radioTheme: theme.radioTheme.copyWith(overlayColor: _noPressedOverlay),
+      switchTheme: theme.switchTheme.copyWith(overlayColor: _noPressedOverlay),
+      floatingActionButtonTheme: theme.floatingActionButtonTheme.copyWith(
+        splashColor: Colors.transparent,
+      ),
+      sliderTheme: theme.sliderTheme.copyWith(
+        overlayColor: WidgetStateColor.resolveWith((states) {
+          if (states.contains(WidgetState.pressed) ||
+              states.contains(WidgetState.dragged)) {
+            return Colors.transparent;
+          }
+          return theme.colorScheme.primary.withValues(
+            alpha: states.contains(WidgetState.hovered)
+                ? 0.08
+                : states.contains(WidgetState.focused)
+                ? 0.1
+                : 0,
+          );
+        }),
+      ),
+    );
+  }
+
   static ThemeData lightTheme({
     ColorScheme? dynamicColorScheme,
     int colorIndex = 0,
@@ -295,7 +344,7 @@ class AppTheme {
       fontWeightAdjustment: fontWeightAdjustment,
     );
 
-    return ThemeData(
+    final theme = ThemeData(
       useMaterial3: true,
       pageTransitionsTheme: _reviewPageTransitionsTheme,
       splashFactory: const HapticSplashFactory(),
@@ -429,6 +478,7 @@ class AppTheme {
         thickness: 0.5,
       ),
     );
+    return _withoutTouchInk(theme);
   }
 
   static ThemeData darkTheme({
@@ -464,7 +514,7 @@ class AppTheme {
       fontWeightAdjustment: fontWeightAdjustment,
     );
 
-    return ThemeData(
+    final theme = ThemeData(
       useMaterial3: true,
       pageTransitionsTheme: _reviewPageTransitionsTheme,
       splashFactory: const HapticSplashFactory(),
@@ -610,6 +660,7 @@ class AppTheme {
         thickness: 0.5,
       ),
     );
+    return _withoutTouchInk(theme);
   }
 }
 

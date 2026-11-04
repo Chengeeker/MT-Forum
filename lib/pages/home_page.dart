@@ -13,9 +13,9 @@ import '../core/widgets/forum_avatar.dart';
 import '../data/forum.dart';
 import '../data/preferences.dart';
 import 'forum_page.dart';
+import 'app_settings_page.dart';
 import 'login_page.dart';
 import 'native_forum_page.dart';
-import 'settings_page.dart';
 import 'web_page.dart';
 import 'thread_collection_list.dart';
 import '../data/native_forum.dart';
@@ -1025,13 +1025,13 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           children: [
             ReviewPreferenceTile(
-              title: '个性化',
-              subtitle: '主题、配色与触感',
-              leading: const Icon(Icons.palette_outlined),
+              title: '设置',
+              subtitle: '个性化、存储与账号',
+              leading: const Icon(Icons.settings_outlined),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
-                  builder: (_) => SettingsPage(
+                  builder: (_) => AppSettingsPage(
                     preferences: widget.preferences,
                     client: widget.client,
                   ),
@@ -1114,6 +1114,7 @@ class _HomePageState extends State<HomePage> {
     return SafeArea(
       child: Align(
         alignment: Alignment.bottomCenter,
+        heightFactor: 1,
         child: Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.paddingOf(context).bottom > 0 ? 6 : 14,

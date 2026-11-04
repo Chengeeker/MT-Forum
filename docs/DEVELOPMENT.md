@@ -1,6 +1,6 @@
 # MT论坛开发文档
 
-更新：2026-11-03。当前版本：1.3.8+44。本机开发文档副本与仓库文档同步；本机路径不公开。
+更新：2026-11-04。当前版本：1.5.0+51。本机开发文档副本与仓库文档同步；本机路径不公开。
 
 ## 用户要求与边界
 - Android 包名 `bbs.binmt.cc`，应用名 MT论坛，仅 ARM64-v8a。
@@ -30,7 +30,7 @@
 1. 初始工程及 MT论坛开发文档均为空，没有旧 APK 或用户文件需要覆盖。
 2. 本机 curl、移动 API 均收到 403，内置浏览器 ERR_HTTP_RESPONSE_CODE_FAILURE。网络失败必须显示原因及重试/官网入口，不能用“暂无数据”吞错。用户提示站点可能限制海外网络，需要核对本机代理路由。
 3. Review 仅复制 UI 组件，不复制微博业务、Cookie、账号或整个设置页。主题及磨砂来自当前源码，设置页按论坛能力组合。
-4. Review 画廊曾有分页/缩放手势问题。论坛版用 ExtendedImage 手势分页及 Hero 共享元素转场，关闭滑出手势；未迁移 Review 的手势仲裁、HDR、Live Photo 等微博专属逻辑，合入后仍需真机核对缩放与翻页冲突。
+4. Review 画廊曾有分页/缩放手势问题。论坛版用 ExtendedImage 手势分页及 Hero 共享元素转场，关闭滑出手势；未迁移 Review 的手势仲裁、HDR、Live Photo 等专属逻辑。extended_image 8.3.1 的默认双击只还原尺寸，必须显式接入放大回调；手势回归必须使用已解码图片，加载占位图没有图片手势，不能替代缩放/翻页验证。真机触感及帧率仍需设备核对。
 5. 用户点击的外链使用 M3 应用内 WebView；只接收无 user-info 的 HTTP(S) 地址，`mailto:` 交给系统应用，其他 scheme 拒绝。保留 `usesCleartextTraffic=false`，明文 HTTP 可能被 Android/WebView 阻止；不附加论坛认证头或 Cookie。
 6. 返回首页和 Tab 切换保持已有内容和滚动位置；不在 resume 自动刷新。仅显式刷新重载非空列表。
 7. 不关闭 TLS 验证，不将 Cookie 附到外站。登录会话由 Android WebView 私有 Cookie 存储维护；原生只按论坛 URL 读取。
@@ -584,3 +584,74 @@
 - 新测试使用真实结构差异：点评响应没有.tbmu .y状态区，类型链接不带filter。覆盖延迟/失败切换、状态保留、点评来回、分页、原位导航及换号隔离；待相关回归、明暗/两倍字体预览与正式ARM64核验。code43 APK已校验保留回退，图片播放器及液态底栏不改。
 - 83项相关回归通过，4个改动Dart文件analyze无诊断。已查看docs/preview-my-posts-dark.png、preview-my-comments-light.png及preview-my-comments-large.png；明暗与两倍字号检查包括一级三栏中心等距且位置固定、点评只有一级分栏、磨砂分界位于最后一行下沿。预览使用合成账号和测试字体，不等同于真实账号/手机验收。测试build/my-posts-tabs-regressions.log，分析build/my-posts-tabs-analyze.log。
 - 正式ARM64包MT论坛_v1.3.8_arm64.apk，25349208字节，SHA-256 9A1867384416D2874E0BFEDF0AB0044F37753D10995DA9A383CDB5131A333B0C；aapt核对bbs.binmt.cc / 1.3.8+44，唯一ABI arm64-v8a；V2原签名与16KB zipalign通过。198个生产文件及配置、MainActivity.kt与实际编译快照一致。生产差异仅我的帖子模型/分栏交互及设置版本文字；图片播放器与液态导航保持code43。核验build/release-verification-code44.json，构建build/my-posts-tabs-build.log，源码build/source-snapshots/v1.3.8+44；code43包已校验保留，根目录只留最新包。本轮未安装真机、未使用真实账号验收、未推送GitHub。
+
+## 2026-11-03 GitHub 源码同步（1.3.8+44）
+- 已推送到 https://github.com/Chengeeker/MT-Forum 的main分支，提交04662014d1d5ca481fe64a5d1455a85339e0f8f4（Sync 1.3.8 native account and forum improvements）；从6b7f0f6快进到0466201，共73个源码、测试及文档文件。GitHub API远端HEAD、本地HEAD与origin/main一致，推送工作树干净。
+- 正式包生产源码已逐文件核对，提交仅统一文本换行/末尾空行以排除格式噪声；排除APK、BKS/P12、签名配置、local.properties和缓存。README及公开文档未发现本地绝对路径；本次仅同步既有已核验版本，没有另行改动或重编APK。推送核验build/github-push-code44.json。
+
+## 2026-11-03 设置分组起始线与账号提示位置（1.3.9+45）
+- 用户明确小标题应对齐整个内容的起始处/图标左侧，而不是文字标题左侧。个性化页5个分组从独立8缩进改为Directional起始16，与卡片内控件的内容起点一致；主题色卡片的内部12也同步16，其他内间距及字体不变。审查WebDAV两组内部标题、表单、主页分组，已处于各自内容内边距中的保持，不按有无leading把标题推至文字列。
+- 账号成功提示之前在离开的Scaffold先显示，随后pop，SnackBar会参与跨页Hero/位置迁移。登录统一入口等待登录路由completed后在目标页显示成功提示，兼容用户名/邮箱、QQ和取消与成功响应竞态；退出在资料页完成返回后显示。失败与取消仍留在当前页且不报成功，不修改会话校验或清除逻辑。
+- 两处成功提示复用showAccountStatus，使用M3浮动SnackBar的底部对齐淡入淡出；清理旧账号提示。不设置共享Messenger的AnimationStyle.noAnimation，避免其复用控制器后把其他提示时长变成0；其他提示动画与页面/图片播放器转场不改。
+- 新增位置/时序检查覆盖5处标题与图标起点、WebDAV已有对齐、明暗/大字体、登录与退出返回完成前不显示成功提示、显示/消失期间文字纵坐标固定，以及普通提示仍保留原动画。既有登录/退出测试宿主补齐真实页面的Scaffold。待必要回归及ARM64构建；code44包与源码保留回退。
+- 联动回归定位到更直接根因：普通与液态悬浮底栏的Align未设heightFactor，作为Scaffold.bottomNavigationBar时占满可用高度，fixed提示被放到顶部，floating提示则会被挤出屏幕。仅为两处外层Align设heightFactor=1，按实际子组件高度参与布局；不改56高度、padding、着色器、镜片参数和交互。新增三种底栏的实际占位、底部提示位置及提示出现前后胶囊矩形不变检查。
+- 113项相关回归通过，覆盖新增6项设置/提示检查、已有登录竞态/超时/退出失败、消息入口、WebDAV、我的帖子及液态底栏交互。9个改动Dart文件analyze无诊断；最终字体预览检查及该测试静态分析再次通过。已查看docs/preview-settings-top-light.png和preview-settings-content-large.png：标题与控件图标的内容起始列一致，大字号换行正常。预览仅为合成账号/本机测试字体，非真机验收。日志build/settings-feedback-regressions.log及build/settings-feedback-analyze.log；未改变全局提示时长、页面曲线或图片播放器。
+- 正式ARM64包MT论坛_v1.3.9_arm64.apk，25349208字节，SHA-256 71674A5A7A9DAA2CF4D6B4E22B7265B5712725949B1163597433BB3C24CAF6D0；aapt核对bbs.binmt.cc / 1.3.9+45，唯一ABI arm64-v8a；V2原签名与16KB zipalign通过。199个生产文件及配置、MainActivity.kt与实际编译快照一致。生产差异限6个Dart文件（含新增账号提示工具与两处底栏外层占位修正），图片播放器/玻璃依赖包不变。核验build/release-verification-code45.json，构建build/settings-feedback-build.log，源码build/source-snapshots/v1.3.9+45；code44包已校验保留，根目录仅保留最新包。本轮未安装真机、未使用真实账号验收、未推送GitHub。
+
+## 2026-11-03 Review式关于应用入口与弹窗（1.4.0+46）
+- 关于入口原本藏在个性化末尾且只是Flutter默认showAboutDialog。按Review设置大厅“关于与支持”的层级移到我的一级列表，使用现有ReviewPreferenceTile和分组卡片；标题对齐图标内容起点。删除个性化中的旧入口，不重复提供两个关于页。
+- 参考当前Review的settings_view.dart关于弹窗（SHA-256 AAD728B6B2D90631881B5BE89E3646C1034AF172D0D8C021C64918617B692BFA）：72图标、18图标圆角、21名称、版本胶囊、13简介、三行功能说明、GitHub项目卡片及居中“我知道了”。移入其60ms原地淡入的showAppDialog，不全局替换既有弹窗；系统减少动画时为0ms。MT内容按实际能力填写，不复制参考项目专属业务或100%纯原生声明。
+- 关于图标使用用户指定且当前APK正在使用的原始PNG，复制到assets/app-icon.png并逐字节核对；不使用旧的16像素网站图标，不裁切或改写源PNG。按72dp及设备像素比指定解码宽度，避免关于页为小图标解码完整2048图；图标只在打开弹窗时加载，不加入首页预加载。
+- 宽窄/两倍字体通过名称版本Wrap与AlertDialog可滚动内容适配，操作区保持可达；无功能分割线。GitHub地址改为本项目，复用既有应用内浏览器且不携带论坛会话。保留开源许可按钮和Review MIT归属说明，许可证仍由已有注册逻辑提供。
+- 功能版本同步为1.4.0+46（pubspec及关于版本常量/首页摘要），保留code45 APK和源码回退。新增入口/版本/图标、无位移60ms、许可、去重、减少动画与明暗/纯黑/窄屏大字体检查；待必要回归及正式ARM64构建核验。不修改图片播放器、登录状态、底栏参数或签到/备份业务。
+- 40项关于/设置/首页相关回归通过，5个改动Dart文件analyze无诊断；最终等待本地图标解码的预览检查及测试分析再次通过。已查看docs/preview-about-light.png、preview-about-dark.png、preview-about-pureblack.png及preview-about-large.png；72图标使用原始用户PNG，窄屏两倍字体可滚动阅读且确认/许可按钮可达。测试字体仅用于fixture预览，不是真机截图；未操作真实账号或平台WebView。日志build/about-dialog-regressions.log、build/about-dialog-analyze.log及build/about-dialog-preview.log。
+- 正式ARM64包MT论坛_v1.4.0_arm64.apk，26222955字节，SHA-256 E96961191D3DDEBE02ACB9DEB51FB73153C52A1E477268A9595913666D40478D；aapt核对bbs.binmt.cc / 1.4.0+46，唯一ABI arm64-v8a；V2原签名与16KB zipalign通过。202个生产文件及配置、MainActivity.kt与实际编译快照一致，APK内关于图标PNG字节与用户原图一致。生产差异限关于弹窗/工具、一级入口、旧入口移除和原始图标资源；图片播放器与液态底栏不变。核验build/release-verification-code46.json，构建build/about-dialog-build.log，源码build/source-snapshots/v1.4.0+46；code45包已校验保留，根目录仅保留最新包。本轮未安装真机、未使用真实账号验收、未推送GitHub。
+
+## 2026-11-03 项目目录整理（保持1.4.0+46）
+- 清理107个明确目标，共8175个文件：48个较早或重复APK、35份旧源码快照，以及.dart_tool、测试缓存、旧插件构建输出、旧探测目录、Android本地Gradle缓存/报告、根目录Flutter失败日志和失效暂存清单。仅处理本项目目录内经过绝对路径边界检查的普通路径，未跨目录处理系统临时文件或全局SDK缓存，未停止或改动代理进程。
+- 当前APK 1.4.0+46保留；rollback保留最近1.3.9+45、1.3.8+44安装包，source-snapshots保留code44/code45/code46。按code区分时间，不把早期曾使用过的1.5.x名字误当当前新版。更早的包和重复源码副本不再保留。
+- 222份体积较小的旧诊断/核验记录集中归档。原build/<记录文件>查build/reports/history/<记录文件>；原build/rollback/<非APK记录>查build/reports/history/rollback/<记录文件>。历史开发记录按此映射读取，已有文档和参考预览未删。新增build/README.md说明可再生成缓存与不可整删的交付资料。
+- 保留唯一Git工作副本build/github-push-checkout、签名文件与本地构建配置、离线构建必需的final-gradle-defines.txt、当前构建/测试指针和最近三版核验记录。清理前后1421份保留文件逐项哈希核对通过，之后仅本开发文档追加清理记录；202个生产文件与当前发布快照一致，Git HEAD仍为04662014d1d5ca481fe64a5d1455a85339e0f8f4且工作树干净，当前APK哈希仍为E96961191D3DDEBE02ACB9DEB51FB73153C52A1E477268A9595913666D40478D。
+- 项目从约1571.87 MiB减至约109 MiB，释放约1.43 GiB。清单、保护范围、归档映射及统计在build/reports/cleanup/。本轮未改应用源码、未变更版本、未重新构建/安装APK、未推送GitHub，避免仅整理文件又重新生成缓存。下次通过发布脚本构建会自动解析离线依赖；直接使用IDE如缺索引，先运行flutter pub get --offline。
+
+## 2026-11-04 图片播放器双击缩放修复（1.4.1+47）
+- 根因：ExtendedImage 已启用 gesture，但没有设置 onDoubleTap；锁定依赖8.3.1的默认实现仅把图片恢复到initialScale=1，双击不会放大。新增已解码图片测试先复现了双击后仍为1.0；原先只测加载预览和顶栏，漏掉真实图片手势。
+- 在共享 ForumImageGalleryPage 接入双击：围绕触点在适配大小与2.5倍间切换，复用Review的260ms/easeOutCubic平滑缩放和既有触感。单个动画控制器随页面释放，新触摸、切图或返回立即停掉旧动画，避免双指/拖动时抢状态；系统减少动画时直接完成缩放。
+- 已解码图片5项定向检查通过，覆盖双击放大/还原与触点偏移、双指缩放、放大后拖动、还原后多图翻页、触摸中断、减少动画及中途释放。分页现有逻辑通过，不另加手势识别器；仅添加不参与手势竞技的Pointer监听。原图/预览加载、顶部按钮、330ms打开/200ms返回、液态玻璃返回隐藏和视频播放器保持不变。
+- 版本及关于常量同步为1.4.1+47，code46安装包已校验保留回退。待相关回归、静态分析、正式ARM64构建核验；本轮不涉及账号数据和网络协议，无新依赖，未安装真机或推送GitHub。
+- 最终27项播放器/帖子交互/关于版本回归通过，3个变更Dart文件analyze无诊断。图片手势使用本地已解码800×600图像缓存，不依赖网络占位；未发现现有双指/拖动/翻页遗漏。相关日志：build/gallery-gesture-reproduction.log、gallery-gesture-regressions.log、gallery-gesture-analyze.log。Review当前参考图片页源码SHA-256为80243AB2059C364E070C95E8A97839456942FC4AF430D6825E90E6F4F0D12036；只参考双击动画时长和曲线，没有复制其业务或改变论坛最大5倍缩放范围。
+- 正式ARM64包MT论坛_v1.4.1_arm64.apk，26222955字节，SHA-256 5FB314A292503715A88331F511F973D79124B089689C801EC71E65A0DE2017AC；aapt核对bbs.binmt.cc / 1.4.1+47，唯一ABI arm64-v8a，V2原签名和16KB zipalign通过。202个生产文件及配置、MainActivity.kt与实际编译快照一致；顶栏按钮组件和视频播放器文本逐字不变。核验build/release-verification-code47.json，构建build/gallery-gesture-build.log，源码build/source-snapshots/v1.4.1+47。code46旧包SHA-256 E96961191D3DDEBE02ACB9DEB51FB73153C52A1E477268A9595913666D40478D保留于rollback，根目录仅保留新包。未安装真机、未进行真实网络手势或帧率验收、未推送GitHub。
+
+## 2026-11-04 复用Review两档双击放大（1.4.2+48）
+- 上次只实现一次放大后还原；用户要求使用Review的两次放大逻辑。本轮按当前Review图片页（SHA-256 80243AB2059C364E070C95E8A97839456942FC4AF430D6825E90E6F4F0D12036）复用分档：当前倍率≤1.05进入首档，≤3.6进入6倍，其余还原。普通图循环1→2.5→6→1，长图首档3.5，长图按已解码图片高/宽>2判断，无额外网络请求或尺寸缓存。
+- 图片配置同时对齐Review的maxScale=8、animationMaxScale=9，避免新增6倍目标超过旧5倍上限，被依赖的缩放回弹截断。借用逻辑时按本项目8.3.1 API从state.widget.extendedImageState读取尺寸，不复制参考项目的媒体模型字段；保持既有260ms/easeOutCubic、触摸/返回中断及减少动画支持。
+- 28项定向回归通过（含6项已解码图片手势测试），3个变更Dart文件analyze无诊断。覆盖普通图片完整两档缓动及触点、长图比例恰好2和略大于2、双指缩放后接续分档、还原后翻页、触摸中断和动画中途释放；减少动画也遵循同一两档循环。日志build/gallery-stages-regressions.log、gallery-stages-analyze.log。
+- 版本与关于同步1.4.2+48，code47 APK校验保留回退；保留既有330ms打开/200ms返回、原图预览替换、顶栏及视频播放器。待正式ARM64包核验；未安装真机、未推送GitHub。
+- 正式ARM64包MT论坛_v1.4.2_arm64.apk，26222955字节，SHA-256 430B4DDCCFFAE69DEFDDD497392D12CA701C0EE177BF2ED0B7407E152BC86B5E；bbs.binmt.cc / 1.4.2+48 / 唯一ABI arm64-v8a，V2原签名及16KB zipalign通过。202个生产文件及配置、MainActivity.kt与编译快照一致；按钮组件及视频播放器与code47逐字相同。核验build/release-verification-code48.json，构建build/gallery-stages-build.log，源码build/source-snapshots/v1.4.2+48；code47包已校验保留，根目录仅留新包。未安装真机或推送GitHub。
+
+## 2026-11-04 图片第二档放大抽动修复（1.4.3+49）
+- 已用390×844竖屏、800×600已解码图像复现：2.5→6倍第一帧的图像中心从422跳到453.7997，偏移约31.8px。根因是extended_image 8.3.1的handleDoubleTap每帧沿用上一倍率的横/纵边界标记，图片从未覆盖视口的轴放大到覆盖时，绘制的两次边界计算把旧轴偏移按新轴解释，突然贴到边缘。原测试只核对倍率与最终偏移，没有测跨边界的中间帧。
+- 共享scaleImage按当前已绘制矩形、真实局部触点和倍率比例计算新中心，使用公开GestureDetails重新生成本帧的边界状态；不继承旧的轴标记，不改依赖包。每帧仍只更新当前图片，沿用原来的单个动画控制器，不增加图片请求、解码、监听器或采样图层。减少动画路径使用同一几何修复。
+- 新增竖屏跨纵向边界、横屏跨横向边界的18帧中心稳定检查，以及拖动后第二档18帧触点锚定检查；旧版先复现失败，新实现通过。保留普通图1→2.5→6→1、长图1→3.5→6→1、260ms/easeOutCubic、330ms打开/200ms返回、原有手势中断与翻页。8项手势检查已通过，待相关完整回归、静态分析及正式ARM64核验。
+- 版本与关于同步1.4.3+49，code48 APK已校验保留回退；本轮不改图片加载、顶栏按钮、液态玻璃和视频播放器，未安装真机或推送GitHub。
+- 最终30项播放器/帖子/关于回归通过，3个变更Dart文件analyze无诊断。跨轴边界的中心位移和拖动后触点位移逐帧均在0.01逻辑像素容差内，覆盖横竖屏及现有长图/普通图循环、双指/翻页/中断；这些是已解码fixture几何检查，不能代替真机帧率和网络图像验收。日志build/gallery-jump-reproduction.log、gallery-jump-regressions.log、gallery-jump-analyze.log。
+- 正式ARM64包MT论坛_v1.4.3_arm64.apk，26222955字节，SHA-256 2BA1B049BD0546D537B03B363D972AA3CA5892EDD3AC8238A11F72D9C4C5A5CC；bbs.binmt.cc / 1.4.3+49 / 唯一ABI arm64-v8a，V2原签名及16KB zipalign通过。202个生产文件及配置、MainActivity.kt与编译快照一致；按钮组件及视频播放器与code48逐字相同。核验build/release-verification-code49.json，构建build/gallery-jump-build.log，源码build/source-snapshots/v1.4.3+49；code48包已校验保留，根目录仅留新包。未安装真机、未进行设备帧率验收或推送GitHub。
+
+## 2026-11-04 全局移除点击/长按水波纹（1.4.4+50）
+- 用户明确要求关闭普通水波纹，同时保留液态玻璃底栏的大水珠。共享HapticSplashFactory改为返回不绘制的NoSplash，继续在按下时提供已有自动轻触感及业务回调去重；不能直接替换成原生NoSplash主题工厂而遗漏全局触感。应用源码没有其他显式InkSplash/InkRipple/InkSparkle覆盖，ReviewCard原有NoSplash保持原样。
+- 明暗/纯黑与动态取色共用_withoutTouchInk：透明全局splash/highlight，并关闭Material按钮/图标按钮/分段按钮、分栏、搜索、普通导航、复选框/单选/开关的pressed覆盖层，以及FAB水波纹和滑块拖动反馈圈。只拦截触摸按压状态，保留默认focus/hover回退、键盘焦点、选中/禁用颜色和控件可访问性；不修改点击/长按回调、布局和目标尺寸。
+- 新增三种主题的状态解析检查，以及7种控件在按住100ms和700ms时的像素一致性检查，同时验证回调和每次按下的轻触感。液态底栏测试改用真实AppTheme，既有长按220ms放大、拖动、快抛、取消及回弹检查通过；没有修改玻璃依赖和底栏实现，不关闭其动画或触感。11项定向检查已通过，待相关回归、静态分析和正式ARM64核验。
+- 版本与关于同步1.4.4+50，code49 APK已校验保留回退。本轮只影响应用原生Material反馈，不改站外网页自身脚本/样式、图片播放器和页面转场；不新增依赖、监听器或图片采样，移除波纹绘制可减少瞬时重绘。尚未安装真机或推送GitHub。
+- 最终59项原生反馈/液态底栏/首页搜索触感/账号入口/设置/关于/图片手势回归通过，5个变更Dart文件analyze无诊断。三主题7类控件在100ms与700ms按住状态的像素逐字一致，回调和自动轻触感保持；键盘focus/hover保留回退。日志build/no-ripple-regressions.log、no-ripple-analyze.log；未使用真实账号或设备验收。
+- 正式ARM64包MT论坛_v1.4.4_arm64.apk，26222955字节，SHA-256 FD402744D7416D682DC20837C555C80A215BDB99B9DFB55519726722A8589D7D；bbs.binmt.cc / 1.4.4+50 / 唯一ABI arm64-v8a，V2原签名和16KB zipalign通过。202个生产文件及配置、MainActivity.kt与实际编译快照一致；生产差异仅AppTheme、HapticSplashFactory及关于版本，首页/液态导航实现、玻璃依赖、图片播放器均与code49字节相同。核验build/release-verification-code50.json，构建build/no-ripple-build.log，源码build/source-snapshots/v1.4.4+50；code49包已校验保留回退，根目录仅留新包。未安装真机或推送GitHub。
+
+## 2026-11-04 设置大厅重组与媒体存储（1.5.0+51）
+- GitHub推送准备时用户追加本轮需求，先完成新设置功能及验证，再统一推送；此前远端main和干净交付工作副本均为04662014d1d5ca481fe64a5d1455a85339e0f8f4，尚未提交/推送1.4.x。用户明确选择同时补齐图片与视频保存/分类路径。
+- “我的”将只保留一个设置入口，设置大厅按Review当前源码组合偏好与功能、存储与备份、账号设置、关于与支持，标题对齐图标左侧、无功能分割线。原个性化页保留主题/字体/触感，自动签到和WebDAV移入设置大厅，关于复用既有弹窗。本人主页正常状态去掉重复退出按钮；资料错误时仍保留退出救援入口。
+- 图片和视频各提供默认、按本人昵称、按帖子作者昵称三种保存分类。Android图片用Pictures/MT论坛，视频用Movies/MT论坛，按MediaStore允许的集合适配；本人分类在保存时真实核验账号，文件夹名与原生参数双重校验。视频限直接媒体文件，流式下载至应用私有临时目录，最大512MB、可取消，写入相册后删除临时文件；不把整段视频经平台通道复制到内存。
+- 缓存管理沿用Review的用量卡片、清理确认和0/50/100/200/500/1024/2048MB阈值，仅清理cacheimage直接子级MD5命名普通文件，保留最近一分钟写入文件，不跟随链接；0关闭自动清理，启动和关闭画廊时检查。账号检查调用论坛资料页并校验Cookie/会话代次，登录表单才判定失效；网络/验证码/未知结构报告未完成，不误清登录会话。静态分析、功能/竞态/存储边界回归和正式ARM64构建核验已完成，详见下方记录。
+- 全量198项回归通过，新增流中取消下载专项后11项设置/存储检查再次通过，合计199个不同用例覆盖；lib/test整体analyze无诊断。已检查新设置大厅、存储、缓存管理的明暗/360宽两倍字体预览，标题按图标起始线对齐、无功能分割线、无溢出。fixture使用测试字体与合成账号，不是真机或真实账户验收。预览docs/preview-settings-hub-*.png、preview-storage-settings-*.png、preview-cache-management-*.png；日志build/settings-hub-all-tests.log、settings-hub-final-tests.log、settings-hub-final-analyze.log。
+- 复盘：检查结果显示前必须停止检测加载指示，不能让弹窗下的spinner持续动画；更换设置导航后，测试滚动到账号项要等待布局帧再点击。缓存统计使用代次丢弃旧结果，清理和阈值写入互斥，设置保存异常回读本地值并提示失败。新设置路径和缓存阈值纳入WebDAV安全备份白名单及范围校验；旧备份仍可恢复。
+- 参考Review当前UI源码指纹：settings_view AAD728B6B2D90631881B5BE89E3646C1034AF172D0D8C021C64918617B692BFA，storage_settings_page 7CCD65948E29CB2EEEFE54F04B651480B3296B6CB3CE4CE588DAFED3EB4CDFDA，cache_management_page 792A6817CA903EE24AC24E9D1B6F64541C51E91CD5C15072B8159907615094E5。直接复用既有M3控件/关于/WebDAV与缓存处理边界，未复制参考项目的业务和账号导出能力。液态底栏实现、玻璃包及已修复的图片双击几何/动画保持原样。
+- 正式ARM64包MT论坛_v1.5.0_arm64.apk，26355275字节，SHA-256 895928C5D0BA7DD14C8AE6AB185081665B0569E1B0B35210C6F9CDBBFD0532E6；aapt核对bbs.binmt.cc / 1.5.0+51，唯一ABI arm64-v8a；V2原签名与16KB zipalign通过。207个生产文件及配置、MainActivity.kt与实际编译快照一致。核验build/release-verification-code51.json，构建build/settings-hub-build.log，源码build/source-snapshots/v1.5.0+51；code50正式包已校验保留回退，根目录仅保留最新包。未安装真机、未操作真实账号，实际设备相册授权和保存仍需实机验收。
+- 本次GitHub交付范围包含尚未推送的code45–50与设置大厅code51，目标为既有main分支；只交付源码、合成测试与文档，排除APK、签名材料、本机配置及缓存。交付副本保留既有文本换行规则，忽略纯换行与末尾空行差异，避免无关格式变动；公开README/docs排查本地绝对路径及凭据，不改写历史。实际提交/远端核验结果记在本机build/github-push-code51.json。
