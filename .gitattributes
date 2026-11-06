@@ -1,0 +1,5 @@
+* text=auto
+gradlew text eol=lf
+*.bat text eol=crlf
+app/src/main/assets/glass/** -text whitespace=cr-at-eol,-blank-at-eol
+app/src/main/assets/liquid/** -text whitespace=cr-at-eol,-blank-at-eol

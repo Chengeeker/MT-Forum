@@ -1,0 +1,16 @@
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+    <style name="OriginalDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/dialog_enter</item>
+        <item name="android:windowExitAnimation">@anim/dialog_exit</item>
+    </style>
+    <style name="StandardDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/dialog_standard_enter</item>
+        <item name="android:windowExitAnimation">@anim/dialog_standard_exit</item>
+    </style>
+</resources>
