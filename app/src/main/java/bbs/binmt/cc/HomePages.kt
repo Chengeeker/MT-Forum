@@ -655,8 +655,8 @@ fun ForumNavigation(state: ForumState, modifier: Modifier = Modifier) {
         )
     if (!state.settings.bool("floatingNavigation") || LocalDensity.current.fontScale * 12 > 16) {
         NavigationBar(
-            modifier.navigationBarsPadding().height(68.dp),
-            windowInsets = WindowInsets(0, 0, 0, 0),
+            modifier.height(68.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
+            windowInsets = WindowInsets.navigationBars,
             containerColor =
                 if (MaterialTheme.colorScheme.surface == Color.Black) Color.Black
                 else if (MaterialTheme.colorScheme.surface.luminance() < .5f) Color(0xFF16171B)

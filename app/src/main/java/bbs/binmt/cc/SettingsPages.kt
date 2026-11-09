@@ -40,8 +40,7 @@ fun Section(
     Surface(
         modifier.fillMaxWidth(),
         color =
-            if (colors.surface == Color.Black) colors.surfaceContainer
-            else colors.surfaceContainerLow,
+            colors.settingsCardColor(LocalBackdrop.current?.background ?: colors.surface),
         shape = RoundedCornerShape(radius.dp),
     ) {
         Column(content = content)
@@ -226,7 +225,7 @@ fun SettingsHub(state: ForumState, modifier: Modifier, about: () -> Unit) {
             Section {
                 PreferenceRow(
                     "关于应用",
-                    "版本 1.6.16",
+                    "版本 ${BuildConfig.VERSION_NAME}",
                     Icons.Outlined.Info,
                     onClick = {
                         state.haptic()
@@ -312,7 +311,7 @@ internal fun OriginalBottomSheet(
         contentWindowInsets = contentWindowInsets,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         containerColor =
-            if (colors.surface == Color.Black) Color(0xFF141414) else colors.surfaceContainerLow,
+            colors.settingsCardColor(LocalBackdrop.current?.background ?: colors.surface),
         tonalElevation = 0.dp,
         scrimColor = Color.Black.copy(alpha = .54f),
         dragHandle = {
@@ -415,124 +414,26 @@ fun ChoiceDialog(
 @Composable
 fun AppearanceSettings(state: ForumState, modifier: Modifier) {
     val settings = state.settings
-    var weight by remember { mutableStateOf(false) }
-    val weightNames = listOf("偏细", "默认", "中等", "偏粗", "加粗")
     LazyColumn(
         modifier,
         contentPadding =
             PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
-                top = LocalContentTop.current + 16.dp,
-                bottom = 16.dp,
+                top = LocalContentTop.current + 12.dp,
+                bottom = 24.dp,
             ),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        item { AppearanceModes(settings.int("themeMode"), { state.setSetting("themeMode", it) },
+            settings.bool("pureBlack"), { state.setSetting("pureBlack", it) }) }
+        item { AppearancePalette(state.dynamic, { state.setSetting("dynamicColor", it) }, settings.int("color"), { state.setSetting("color", it) }) }
+        item { FontWeightSetting(settings.bool("customFontWeight"), settings.int("fontWeightAdjustment"), "MT论坛",
+            hapticsEnabled = settings.bool("haptics"), onReset = { state.persistSettings(mapOf("customFontWeight" to false)) },
+            onCommit = { state.persistSettings(mapOf("fontWeightAdjustment" to it, "customFontWeight" to true)) }) }
+        item { FontSizeSetting(state.fontScale) { state.persistSettings(mapOf("textScale" to it)) } }
         item {
-            Heading("外观", 0, plain = true)
-            Section {
-                listOf("跟随系统", "浅色", "深色").forEachIndexed { i, label ->
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .heightIn(min = 60.dp)
-                            .clickable { state.setSetting("themeMode", i) }
-                            .padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(
-                            settings.int("themeMode") == i,
-                            onClick = null,
-                            modifier = Modifier.size(40.dp),
-                        )
-                        Spacer(Modifier.width(16.dp))
-                        Text(label, style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-                SettingSwitch(state, "pureBlack", "纯黑模式", "深色主题使用纯黑背景")
-                SettingSwitch(state, "dynamicColor", "动态取色")
-            }
-        }
-        item {
-            Heading("字体", 24, plain = true)
-            Section {
-                PreferenceRow(
-                    "应用字体粗细",
-                    "当前：${weightNames[SettingsStore.weights.indexOf(settings.int("fontWeightAdjustment")).coerceAtLeast(0)]}",
-                    Icons.Rounded.FormatBold,
-                    onClick = { weight = true },
-                )
-                Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Rounded.FormatSize, null)
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        Text("应用字体大小", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "${(state.fontScale*100).toInt()}%",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Slider(
-                            state.fontScale,
-                            { state.fontScale = it },
-                            modifier = Modifier.padding(horizontal = 14.dp),
-                            valueRange = .8f..1.4f,
-                            steps = 11,
-                            onValueChangeFinished = state::savePreferences,
-                            thumb = {
-                                Box(
-                                    Modifier.size(20.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.primary,
-                                            androidx.compose.foundation.shape.CircleShape,
-                                        )
-                                        .border(
-                                            1.dp,
-                                            MaterialTheme.colorScheme.onSurface,
-                                            androidx.compose.foundation.shape.CircleShape,
-                                        )
-                                )
-                            },
-                            track = { position ->
-                                val primary = MaterialTheme.colorScheme.primary
-                                Canvas(Modifier.fillMaxWidth().height(4.dp)) {
-                                    val x =
-                                        size.width * ((position.value - .8f) / .6f).coerceIn(0f, 1f)
-                                    val rtl =
-                                        layoutDirection ==
-                                            androidx.compose.ui.unit.LayoutDirection.Rtl
-                                    val radius =
-                                        androidx.compose.ui.geometry.CornerRadius(size.height / 2)
-                                    drawRoundRect(primary.copy(alpha = .18f), cornerRadius = radius)
-                                    drawRoundRect(
-                                        primary,
-                                        topLeft =
-                                            androidx.compose.ui.geometry.Offset(
-                                                if (rtl) size.width - x else 0f,
-                                                0f,
-                                            ),
-                                        size = androidx.compose.ui.geometry.Size(x, size.height),
-                                        cornerRadius = radius,
-                                    )
-                                    for (i in 0..12) drawCircle(
-                                        primary.copy(alpha = .42f),
-                                        radius = 1.dp.toPx(),
-                                        center =
-                                            androidx.compose.ui.geometry.Offset(
-                                                size.width * i / 12,
-                                                size.height / 2,
-                                            ),
-                                    )
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-        }
-        item {
-            Heading("底部导航", 24, plain = true)
-            Section {
+            AppearanceSection("底部导航") {
                 SettingSwitch(
                     state,
                     "floatingNavigation",
@@ -543,8 +444,7 @@ fun AppearanceSettings(state: ForumState, modifier: Modifier) {
             }
         }
         item {
-            Heading("显示效果", 24, plain = true)
-            Section {
+            AppearanceSection("显示效果") {
                 SettingSwitch(
                     state,
                     "liquidGlass",
@@ -552,62 +452,13 @@ fun AppearanceSettings(state: ForumState, modifier: Modifier) {
                     "控制液态玻璃控件；当前应用于悬浮底栏",
                     Icons.Rounded.BlurOn,
                 )
+                if(settings.bool("liquidGlass") && settings.bool("floatingNavigation")) NavigationGlassChoice(settings.bool("translucentNavigationGlass"), hapticsEnabled = settings.bool("haptics")) { state.persistSettings(mapOf("translucentNavigationGlass" to it)) }
             }
         }
-        item {
-            Heading("主题颜色", 24, plain = true)
-            Section {
-                FlowRow(
-                    Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    listOf("经典红", "活力橙", "极光蓝", "翡翠绿", "优雅紫", "樱花粉", "青碧色", "经典黑灰")
-                        .forEachIndexed { i, label ->
-                            FilterChip(
-                                settings.int("color") == i,
-                                { state.setSetting("color", i) },
-                                label = { Text(label) },
-                                enabled = !state.dynamic,
-                                leadingIcon = {
-                                    Surface(
-                                        Modifier.size(16.dp),
-                                        shape = RoundedCornerShape(8.dp),
-                                        color =
-                                            Color(
-                                                listOf(
-                                                    0xFFFA2F3A,
-                                                    0xFFFF8200,
-                                                    0xFF1976D2,
-                                                    0xFF2E7D32,
-                                                    0xFF7B1FA2,
-                                                    0xFFE91E63,
-                                                    0xFF00897B,
-                                                    0xFF455A64,
-                                                )[i]
-                                            ),
-                                    ) {}
-                                },
-                            )
-                        }
-                }
-            }
-            Spacer(Modifier.height(24.dp))
-            Section { SettingSwitch(state, "haptics", "触感反馈") }
-        }
+        item { AppearanceSection("触感与震动") {
+            AppearanceToggle("触感与震动反馈", "vibration", settings.bool("haptics")) { state.setSetting("haptics", it) }
+        } }
     }
-    if (weight)
-        ChoiceDialog(
-            "选择字体粗细",
-            SettingsStore.weights.zip(weightNames).map { it.first as Any to it.second },
-            settings.int("fontWeightAdjustment"),
-            { weight = false },
-            summaries = listOf("轻盈精炼视觉", "标准字重", "适度加深笔触", "增强文字层级", "加重文字笔画"),
-            reviewStyle = true,
-        ) {
-            state.setSetting("fontWeightAdjustment", it)
-            weight = false
-        }
 }
 
 fun storagePath(type: Int, video: Boolean) =
@@ -809,7 +660,7 @@ fun AboutDialog(close: () -> Unit, open: (String) -> Unit) {
                         )
                         Surface(color = colors.primaryContainer, shape = RoundedCornerShape(8.dp)) {
                             Text(
-                                "v1.6.16",
+                                "v${BuildConfig.VERSION_NAME}",
                                 Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,

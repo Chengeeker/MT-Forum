@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         coil.Coil.setImageLoader(ImageCache(this).loader())
         setContent {
             val state: ForumState = viewModel()
@@ -62,7 +63,7 @@ fun ForumApp(state: ForumState) {
                 surfaceContainerHigh = Color(0xFF181818),
                 surfaceContainerHighest = Color(0xFF222222),
             )
-    val weight = state.settings.int("fontWeightAdjustment")
+    val weight = if (state.settings.bool("customFontWeight")) state.settings.int("fontWeightAdjustment") else 0
     fun text(size: Int, line: Int, base: Int = 400) =
         TextStyle(
             fontSize = size.sp,

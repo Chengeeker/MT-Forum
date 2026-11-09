@@ -561,7 +561,9 @@ class ScreenRenderTest {
                     view.height,
                     android.graphics.Bitmap.Config.ARGB_8888,
                 )
-            view.draw(android.graphics.Canvas(bitmap))
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.javaClass.getMethod("setHwFeaturesInSwModeEnabled", Boolean::class.javaPrimitiveType).invoke(canvas, true)
+            view.draw(canvas)
             for (x in listOf(30, 50, 70, 90, 110, 130)) {
                 org.junit.Assert.assertEquals(
                     "red at $x",
@@ -830,7 +832,7 @@ class ScreenRenderTest {
         compose.onNodeWithText("检测账号凭据有效性").assertExists()
         capture("settings-light")
         compose.runOnIdle { state.screen = "appearance" }
-        compose.onNodeWithText("应用字体粗细").assertExists()
+        compose.onNodeWithContentDescription("字体粗细").assertExists()
         capture("appearance-light")
         for ((screen, sample) in
             listOf(
@@ -933,7 +935,9 @@ class ScreenRenderTest {
                     view.height,
                     android.graphics.Bitmap.Config.ARGB_8888,
                 )
-            view.draw(android.graphics.Canvas(bitmap))
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.javaClass.getMethod("setHwFeaturesInSwModeEnabled", Boolean::class.javaPrimitiveType).invoke(canvas, true)
+            view.draw(canvas)
             if (checkDarkTitle) {
                 // This crop contains the title and back arrow on the custom dark surface.
                 val pixels = IntArray(88 * 48)

@@ -1,19 +1,21 @@
 # MT论坛
 
-面向 Android 的 Jetpack Compose 论坛客户端，连接 [MT 论坛](https://bbs.binmt.cc/)。当前版本为 1.6.16+68，包名为 `bbs.binmt.cc`，支持 Android 7.0 及以上。发布架构为 arm64-v8a。
+面向 Android 的 Jetpack Compose 论坛客户端，连接 [MT 论坛](https://bbs.binmt.cc/)。当前版本为 1.6.19+71，包名为 `bbs.binmt.cc`，支持 Android 7.0 及以上，仅发布 arm64-v8a APK。
 
-应用支持论坛浏览与搜索、发帖回复、收藏和历史、消息与签到、图片画廊和视频播放，以及 WebDAV 设置备份。Compose 是当前主工程，早期 Flutter 版保留在 Git 提交历史中。
+## 构建
 
-## 构建和测试
-
-使用 JDK 17 和 Android SDK 36。从项目根目录运行主机回归：
+在项目根目录运行：
 
 ```powershell
-.\gradlew.bat testReleaseUnitTest
+pwsh -File .\tool\build_release.ps1
 ```
 
-使用 Android Studio 或运行 `assembleDebug` 可以构建开发版。原签名发布包需要维护者的本地签名配置。
+脚本使用本机原有签名，运行主机回归后将签名 APK 输出到项目根目录。构建快照和运行时临时文件位于项目的 `tmp/`。已有 Gradle 依赖缓存时可加 `-Offline`。
 
-## 许可
+## 开发记录
 
-复用代码的许可和第三方声明随 [应用资源](app/src/main/assets) 提供。
+- [开发文档](docs/DEVELOPMENT.md)
+- [Compose 迁移记录](docs/MIGRATION.md)
+- [视觉对照清单](docs/VISUAL_PARITY.md)
+
+Flutter 源码与最后一版 APK 已移入本地回退目录，Compose 为当前主工程。

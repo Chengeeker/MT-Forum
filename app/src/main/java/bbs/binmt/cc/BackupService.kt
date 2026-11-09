@@ -85,7 +85,7 @@ object BackupRules {
                 "imageCacheThresholdMb" ->
                     require((value as Number).toInt() in SettingsStore.thresholds)
                 "textScale" ->
-                    require((value as Number).toDouble().isFinite() && value.toDouble() in .8..1.4)
+                    require((value as Number).toDouble().isFinite() && value.toDouble() in .8..1.5)
                 "webdav_url" -> if ((value as String).isNotEmpty()) server(value)
                 "webdav_directory" -> directory(value as String)
                 "history" -> {
@@ -123,6 +123,7 @@ object BackupRules {
                 AccountService.cookiePairs(session.getString("cookies"))
             }
         }
+        if ("fontWeightAdjustment" in output && "customFontWeight" !in output) output["customFontWeight"] = output["fontWeightAdjustment"] != 0
         return output
     }
 }

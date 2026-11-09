@@ -41,7 +41,8 @@ class SettingsStore(context: Context) {
             values[it] = int(it).coerceIn(0, 2)
         }
         values["color"] = int("color").coerceIn(0, 7)
-        values["textScale"] = float("textScale").takeIf { it.isFinite() }?.coerceIn(.8f, 1.4f) ?: 1f
+        values["textScale"] = float("textScale").takeIf { it.isFinite() }?.coerceIn(.8f, 1.5f) ?: 1f
+        if (!current.containsKey("customFontWeight")) values["customFontWeight"] = int("fontWeightAdjustment") != 0
         if (int("fontWeightAdjustment") !in weights) values["fontWeightAdjustment"] = 0
         if (int("imageCacheThresholdMb") !in thresholds) values["imageCacheThresholdMb"] = 200
         if (!store.getBoolean("_imported", false)) {
@@ -96,7 +97,7 @@ class SettingsStore(context: Context) {
 
     companion object {
         val thresholds = listOf(0, 50, 100, 200, 500, 1024, 2048)
-        val weights = listOf(-100, 0, 100, 200, 300)
+        val weights = listOf(-300, -200, -100, 0, 100, 200, 300)
         val defaults: Map<String, Any> =
             linkedMapOf(
                 "themeMode" to 0,
@@ -105,8 +106,10 @@ class SettingsStore(context: Context) {
                 "dynamicColor" to false,
                 "floatingNavigation" to true,
                 "liquidGlass" to false,
+                "translucentNavigationGlass" to false,
                 "textScale" to 1f,
                 "fontWeightAdjustment" to 0,
+                "customFontWeight" to false,
                 "haptics" to true,
                 "autoSignIn" to false,
                 "imageSavePathType" to 0,

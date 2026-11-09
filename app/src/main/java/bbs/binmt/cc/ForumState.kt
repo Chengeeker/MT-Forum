@@ -278,10 +278,13 @@ constructor(application: Application, startRequests: Boolean = true) :
         persistSetting(key, value)
     }
 
-    private fun persistSetting(key: String, value: Any) {
+    private fun persistSetting(key: String, value: Any) = persistSettings(mapOf(key to value))
+
+    // New shared controls own feedback; persist the complete change without another pulse.
+    internal fun persistSettings(changes: Map<String, Any>) {
         viewModelScope.launch {
             try {
-                settings.write(key, value)
+                settings.writeAll(changes)
             } catch (failure: Exception) {
                 settings.reload()
                 error = failure.message.orEmpty()

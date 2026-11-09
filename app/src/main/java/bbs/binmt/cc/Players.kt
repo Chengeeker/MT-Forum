@@ -62,6 +62,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import kotlin.math.roundToInt
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -183,6 +187,9 @@ fun GalleryDialog(
 ) {
     val images = selection.images
     val pager = rememberPagerState(initialPage = selection.index, pageCount = { images.size })
+    val thumbs = rememberPagerState(initialPage = selection.index, pageCount = { images.size })
+    val reelDriving = remember { mutableStateOf(false) }
+    GalleryPagerSync(pager, thumbs, reelDriving)
     val save = mediaSaver(state, author)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -435,7 +442,7 @@ fun GalleryDialog(
                                     Icons.AutoMirrored.Rounded.ArrowBack,
                                     "返回",
                                     Modifier.size(
-                                        if (state.settings.bool("liquidGlass")) 22.dp else 24.dp
+                                        22.dp
                                     ),
                                 )
                             }
@@ -468,9 +475,32 @@ fun GalleryDialog(
                                         Icons.Rounded.Download,
                                         "保存到相册",
                                         Modifier.size(
-                                            if (state.settings.bool("liquidGlass")) 22.dp else 24.dp
+                                            22.dp
                                         ),
                                     )
+                            }
+                        }
+                    if (images.size > 1 && !closing && transition.value == 1f)
+                        BoxWithConstraints(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 32.dp)) {
+                            val cell = maxWidth * .16f
+                            HorizontalPager(thumbs, Modifier.fillMaxWidth().height(64.dp), pageSize = PageSize.Fixed(cell),
+                                contentPadding = PaddingValues(horizontal = (maxWidth - cell) / 2),
+                                flingBehavior = PagerDefaults.flingBehavior(thumbs, pagerSnapDistance = PagerSnapDistance.atMost(images.size))) { index ->
+                                val selected = pager.currentPage == index
+                                val outline = RoundedCornerShape(8.dp)
+                                Box(Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = 2.dp)
+                                    .clip(outline).border(2.dp, if (selected) Color.White else Color.Transparent, outline)
+                                    .semantics { this.selected = selected }
+                                    .clickable(interactionSource = null, indication = null) {
+                                        state.haptic()
+                                        reelDriving.value = false
+                                        pager.requestScrollToPage(index)
+                                        thumbs.requestScrollToPage(index)
+                                    }.padding(2.dp).clip(RoundedCornerShape(6.dp))) {
+                                    val request = remember(images[index]) { coil.request.ImageRequest.Builder(context).data(images[index]).size(160).build() }
+                                    AsyncImage(request, "第 ${index + 1} 张图片", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                    if (!selected) Box(Modifier.matchParentSize().background(Color.White.copy(alpha = .5f)))
+                                }
                             }
                         }
                     SnackbarHost(
@@ -485,6 +515,53 @@ fun GalleryDialog(
 }
 
 @Composable
+internal fun GalleryPagerSync(
+    pager: PagerState,
+    thumbnails: PagerState,
+    reelDriving: MutableState<Boolean>,
+): Boolean {
+    val reelDragged by thumbnails.interactionSource.collectIsDraggedAsState()
+    val mainDragged by pager.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(reelDragged, mainDragged) {
+        if (reelDragged) {
+            reelDriving.value = true
+            pager.stopScroll()
+        } else if (mainDragged) {
+            reelDriving.value = false
+            thumbnails.stopScroll()
+            thumbnails.requestScrollToPage(pager.currentPage)
+        }
+    }
+    LaunchedEffect(pager) {
+        snapshotFlow { pager.currentPage }
+            .collect { index -> if (!reelDriving.value) thumbnails.requestScrollToPage(index) }
+    }
+    LaunchedEffect(thumbnails) {
+        snapshotFlow {
+                Triple(
+                    reelDriving.value,
+                    thumbnails.currentPage,
+                    thumbnails.currentPageOffsetFraction,
+                )
+            }
+            .collect { (driving, index, fraction) ->
+                if (driving) {
+                    // A fast small-page fling can briefly report an offset outside +/- 0.5.
+                    val position =
+                        (index + fraction).coerceIn(
+                            0f,
+                            (pager.pageCount - 1).coerceAtLeast(0).toFloat(),
+                        )
+                    val nearest = position.roundToInt()
+                    pager.requestScrollToPage(nearest, position - nearest)
+                }
+            }
+    }
+    return reelDragged
+}
+
+
+@Composable
 internal fun GalleryButton(
     state: ForumState,
     action: () -> Unit,
@@ -492,6 +569,12 @@ internal fun GalleryButton(
     content: @Composable () -> Unit,
 ) {
     val liquid = state.settings.bool("liquidGlass")
+    if (!liquid) {
+        PlainGalleryControl(null, enabled, action) {
+            CompositionLocalProvider(LocalContentColor provides Color.White, content = content)
+        }
+        return
+    }
     val density = LocalDensity.current.density
     var pressed by remember { mutableStateOf(false) }
     var target by remember { mutableStateOf(Offset.Zero) }
@@ -621,42 +704,7 @@ internal fun GalleryButton(
                     )
                 }
             }
-        } else
-            Box(
-                Modifier.size(44.dp)
-                    .dropShadow(
-                        CircleShape,
-                        Shadow(
-                            flutterShadowRadius(7f, density),
-                            Color.Black.copy(alpha = .2f),
-                            offset = DpOffset(0.dp, 2.dp),
-                        ),
-                    )
-                    .dropShadow(
-                        CircleShape,
-                        Shadow(
-                            flutterShadowRadius(5f, density),
-                            Color.White.copy(alpha = .08f),
-                            offset = DpOffset(0.dp, -1.dp),
-                        ),
-                    )
-                    .clip(CircleShape)
-            ) {
-                FrostedBackdrop(Modifier.matchParentSize(), true, blurDp = 2.5f)
-                Box(
-                    Modifier.matchParentSize()
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    Color(0xFFE0E0E0).copy(alpha = .3f),
-                                    Color(0xFF9E9E9E).copy(alpha = .2f),
-                                    Color(0xFF424242).copy(alpha = .36f),
-                                )
-                            )
-                        )
-                        .border(1.dp, Color.White.copy(alpha = .34f), CircleShape)
-                )
-            }
+        }
         IconButton(onClick = action, enabled = enabled, modifier = Modifier.fillMaxSize()) {
             CompositionLocalProvider(LocalContentColor provides Color.White) { content() }
         }
@@ -698,6 +746,7 @@ fun VideoDialog(url: String, state: ForumState, author: String, onClose: () -> U
     var retry by remember { mutableIntStateOf(0) }
     var ratio by remember { mutableFloatStateOf(16f / 9f) }
     val save = mediaSaver(state, author)
+    val scopeForVideoNotice = rememberCoroutineScope()
     val backdrop = rememberBackdrop(Color.Black)
     val owner = LocalLifecycleOwner.current
     val context = LocalContext.current
@@ -909,63 +958,11 @@ fun VideoDialog(url: String, state: ForumState, author: String, onClose: () -> U
                             )
                         }
                     }
-                    Box(Modifier.align(Alignment.TopCenter)) {
-                        FrostedBackdrop(Modifier.matchParentSize(), true)
-                        Row(
-                            Modifier.align(Alignment.TopCenter)
-                                .fillMaxWidth()
-                                .background(Color.Black.copy(alpha = .45f))
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(Color.Black.copy(alpha = .95f), Color.Transparent)
-                                    )
-                                )
-                                .drawWithContent {
-                                    drawContent()
-                                    val stroke = .5.dp.toPx()
-                                    drawLine(
-                                        Color.White.copy(alpha = .24f),
-                                        Offset(0f, size.height - stroke / 2),
-                                        Offset(size.width, size.height - stroke / 2),
-                                        stroke,
-                                    )
-                                }
-                                .statusBarsPadding()
-                                .height(56.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            IconButton(onClick = onClose, modifier = Modifier.width(56.dp)) {
-                                Icon(
-                                    Icons.AutoMirrored.Outlined.ArrowBack,
-                                    "返回",
-                                    tint = Color.White,
-                                )
-                            }
-                            Text(
-                                "论坛视频",
-                                Modifier.weight(1f).padding(start = 16.dp),
-                                color = Color.White,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            if (StorageRules.videoExtension(url) != null) {
-                                if (save.busy)
-                                    CircularProgressIndicator(
-                                        Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                IconButton(
-                                    onClick = {
-                                        if (save.busy) save.cancel() else save.start(url, true)
-                                    }
-                                ) {
-                                    Icon(
-                                        if (save.busy) Icons.Outlined.Close
-                                        else Icons.Outlined.Download,
-                                        if (save.busy) "取消保存" else "保存视频",
-                                        tint = Color.White,
-                                    )
-                                }
+                    ReviewVideoTop(Modifier.align(Alignment.TopCenter), "论坛视频", close = onClose) {
+                        if (StorageRules.videoExtension(url) != null) {
+                            if (save.busy) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                            ReviewVideoAction(if (save.busy) "close" else "download", if (save.busy) "取消保存" else "保存视频") {
+                                if (save.busy) save.cancel() else save.start(url, true)
                             }
                         }
                     }
@@ -998,111 +995,20 @@ fun VideoDialog(url: String, state: ForumState, author: String, onClose: () -> U
                                 Text("重试")
                             }
                         }
-                    Row(
-                        Modifier.align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color.Transparent, Color.Black.copy(alpha = .87f))
-                                )
-                            )
-                            .padding(start = 20.dp, top = 32.dp, end = 20.dp, bottom = 20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconButton(
-                            enabled = media != null && error.isEmpty(),
-                            onClick = {
-                                if (playing) {
-                                    media?.pause()
-                                    playing = false
-                                    resumeAfterFocus = false
-                                } else startPlayback()
-                            },
-                        ) {
-                            Icon(
-                                if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
-                                if (playing) "暂停" else "播放",
-                                tint = Color.White,
-                            )
-                        }
-                        Text(
-                            "${position/60000}:${(position/1000%60).toString().padStart(2,'0')}",
-                            color = Color.White,
-                        )
-                        Box(
-                            Modifier.weight(1f)
-                                .padding(horizontal = 8.dp)
-                                .height(32.dp)
-                                .pointerInput(duration) {
-                                    detectTapGestures { point ->
-                                        if (duration > 0)
-                                            media?.seekTo(
-                                                (point.x / size.width * duration)
-                                                    .toInt()
-                                                    .coerceIn(0, duration)
-                                            )
-                                    }
-                                }
-                                .pointerInput(duration) {
-                                    detectDragGestures { change, _ ->
-                                        if (duration > 0) {
-                                            media?.seekTo(
-                                                (change.position.x / size.width * duration)
-                                                    .toInt()
-                                                    .coerceIn(0, duration)
-                                            )
-                                            change.consume()
-                                        }
-                                    }
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            LinearProgressIndicator(
-                                progress = { buffered },
-                                modifier = Modifier.fillMaxWidth().height(4.dp),
-                                color = Color.White.copy(alpha = .38f),
-                                trackColor = Color.White.copy(alpha = .24f),
-                                gapSize = 0.dp,
-                                drawStopIndicator = {},
-                            )
-                            LinearProgressIndicator(
-                                progress = { position.toFloat() / duration.coerceAtLeast(1) },
-                                modifier = Modifier.fillMaxWidth().height(4.dp),
-                                trackColor = Color.Transparent,
-                                gapSize = 0.dp,
-                                drawStopIndicator = {},
-                            )
-                        }
-                        Text(
-                            "${duration/60000}:${(duration/1000%60).toString().padStart(2,'0')}",
-                            color = Color.White,
-                        )
-                        Box {
-                            TextButton(
-                                onClick = { speeds = true },
-                                enabled = media != null && error.isEmpty(),
-                            ) {
-                                Text("${speed}×", color = Color.White)
-                            }
-                            DropdownMenu(speeds, { speeds = false }) {
-                                listOf(.5f, .75f, 1f, 1.25f, 1.5f, 2f).forEach { value ->
-                                    DropdownMenuItem(
-                                        text = { Text("${value}×") },
-                                        onClick = {
-                                            try {
-                                                media?.playbackParams =
-                                                    media!!.playbackParams.setSpeed(value)
-                                                speed = value
-                                            } catch (_: Exception) {
-                                                error = "当前视频解码器不支持该倍速"
-                                            }
-                                            speeds = false
-                                        },
-                                    )
-                                }
-                            }
-                        }
+                    ReviewVideoBottom(Modifier.align(Alignment.BottomCenter), position.toLong(), duration.toLong(),
+                        (duration * buffered).toLong(), playing, speed, enabled = media != null && error.isEmpty(),
+                        onPlay = {
+                            if (playing) { media?.pause(); playing = false; resumeAfterFocus = false } else startPlayback()
+                        }, onSpeed = { speeds = true }, onSeek = { media?.seekTo(it.toInt()); position = it.toInt() })
+                    if (speeds) ReviewVideoChoices("播放倍速", standardVideoSpeeds.map { "${it}X" }, "${speed}X", { speeds = false }) {
+                        val requested = it.removeSuffix("X").toFloat()
+                        val active = media ?: return@ReviewVideoChoices
+                        val wasPlaying = playing
+                        runCatching {
+                            active.playbackParams = active.playbackParams.setSpeed(requested)
+                            if (!wasPlaying) active.pause()
+                            speed = requested
+                        }.onFailure { scopeForVideoNotice.launch { save.snackbar.showSnackbar("当前视频解码器不支持该倍速") } }
                     }
                     SnackbarHost(
                         save.snackbar,

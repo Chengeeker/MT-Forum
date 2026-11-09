@@ -117,8 +117,6 @@ internal fun LiquidNavigation(state: ForumState, modifier: Modifier = Modifier) 
     val scope = rememberCoroutineScope()
     val colors = MaterialTheme.colorScheme
     val dark = backdrop.background.luminance() < .5f
-    var gpuFailed by remember { mutableStateOf(false) }
-    val gpu = Build.VERSION.SDK_INT >= 33 && !gpuFailed
     var touching by remember { mutableStateOf(false) }
     var dragging by remember { mutableStateOf(false) }
     var target by remember { mutableFloatStateOf(state.tab.toFloat()) }
@@ -162,30 +160,9 @@ internal fun LiquidNavigation(state: ForumState, modifier: Modifier = Modifier) 
                     )
                 GlassTabLabels(barWidth, tabIcons, normalColor, normal)
                 GlassTabLabels(barWidth, activeTabIcons, colors.primary, selected)
-                if (gpu)
-                    GlassNavigationGpu(
-                        backdrop,
-                        normal,
-                        selected,
-                        lens,
-                        press,
-                        dark,
-                        colors.surfaceContainerHigh,
-                        Modifier.fillMaxSize(),
-                        onFailure = { gpuFailed = true },
-                    )
-                else
-                    NavigationGlassCompatibility(
-                        backdrop,
-                        normal,
-                        selected,
-                        normalColor,
-                        colors.primary,
-                        colors.surfaceContainerHigh,
-                        lens,
-                        press,
-                        dark,
-                    )
+                NavigationGlassMaterial(backdrop.layer, { backdrop.origin }, { backdrop.revision },
+                    normal, selected, lens, press, dark, colors.surfaceContainerHigh,
+                    state.settings.bool("translucentNavigationGlass"), tabLabels.size, Modifier.fillMaxSize())
             }
             val barPixels = barWidth.value * density
             val slot = (barPixels - 8 * density) / tabLabels.size
