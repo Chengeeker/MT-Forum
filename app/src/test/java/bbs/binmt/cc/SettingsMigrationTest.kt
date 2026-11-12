@@ -20,11 +20,13 @@ class SettingsMigrationTest {
             .putString("flutter.webdav_password", "old-secret")
             .putString("flutter.textScale", "VGhpcyBpcyB0aGUgcHJlZml4IGZvciBhIGRvdWJsZS4=1.2")
             .commit()
-        val settings = SettingsStore(app)
+        val key=javax.crypto.KeyGenerator.getInstance("AES").apply{init(256)}.generateKey()
+        val password=WebDavSecrets(app,keyProvider={key})
+        val settings = SettingsStore(app,password)
         assertEquals(1.2f, settings.float("textScale"))
         assertEquals("old-secret", settings.string("webdav_password"))
         settings.writeAll(mapOf("webdav_password" to null))
-        assertEquals("", SettingsStore(app).string("webdav_password"))
+        assertEquals("", SettingsStore(app,password).string("webdav_password"))
         assertEquals("old-secret", legacy.getString("flutter.webdav_password", null))
     }
 

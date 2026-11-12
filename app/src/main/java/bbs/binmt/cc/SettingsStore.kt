@@ -7,11 +7,16 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-class SettingsStore(context: Context) {
+class SettingsStore(context: Context,private val password:WebDavSecrets=WebDavSecrets(context)) {
     private val store = context.getSharedPreferences("compose_preferences", 0)
     private val old = context.getSharedPreferences("FlutterSharedPreferences", 0)
     private val values = mutableStateMapOf<String, Any>()
     private val writes = Mutex()
+    var secretReadError:String?=null;private set
+    fun requireReadablePassword():String {secretReadError?.let{error(it)};return string("webdav_password")}
+    internal fun passwordSnapshot()=password.snapshot()
+    internal fun rollbackPassword(expected:Map<String,*>,original:Map<String,*>) {password.rollback(expected,original);reload()}
+
 
     init {
         reload()
@@ -37,6 +42,12 @@ class SettingsStore(context: Context) {
                         else -> fallback
                     }
         }
+        try {
+            val legacyPassword=(current["webdav_password"] as? String)?:legacy["flutter.webdav_password"] as? String
+            if(password.snapshot().isEmpty() && !legacyPassword.isNullOrEmpty())password.save(legacyPassword)
+            values["webdav_password"]=password.load();secretReadError=null
+            if(current.containsKey("webdav_password"))check(store.edit().remove("webdav_password").commit())
+        }catch(e:Exception){secretReadError=if(e is SecretReadFailure)e.message else "WebDAV 密码读取失败，原资料已保留";values["webdav_password"]=""}
         listOf("themeMode", "imageSavePathType", "videoSavePathType").forEach {
             values[it] = int(it).coerceIn(0, 2)
         }
@@ -47,7 +58,7 @@ class SettingsStore(context: Context) {
         if (int("imageCacheThresholdMb") !in thresholds) values["imageCacheThresholdMb"] = 200
         if (!store.getBoolean("_imported", false)) {
             val editor = store.edit()
-            values.forEach { (key, value) ->
+            values.filterKeys{it!="webdav_password"}.forEach { (key, value) ->
                 when (value) {
                     is Boolean -> editor.putBoolean(key, value)
                     is Int -> editor.putInt(key, value)
@@ -73,11 +84,13 @@ class SettingsStore(context: Context) {
 
     suspend fun write(key: String, value: Any) = writeAll(mapOf(key to value))
 
-    suspend fun writeAll(incoming: Map<String, Any?>) =
+    suspend fun writeAll(incoming: Map<String, Any?>, expected: Map<String, Any>? = null, recoverPassword:Boolean=false) =
         writes.withLock {
-            withContext(Dispatchers.IO) {
+            check(expected==null || incoming.keys.all{snapshot()[it]==expected[it]}){"设置已改变，请重新恢复"}
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                val before=store.all.toMap();val oldPassword=password.snapshot();var appliedPassword:Map<String,*>?=null
                 val editor = store.edit()
-                incoming.forEach { (key, raw) ->
+                incoming.filterKeys{it!="webdav_password"}.forEach { (key, raw) ->
                     val value = raw ?: defaults[key] ?: error("未知设置")
                     when (value) {
                         null -> editor.remove(key)
@@ -88,7 +101,20 @@ class SettingsStore(context: Context) {
                         else -> error("设置类型无效")
                     }
                 }
-                check(editor.commit()) { "设置保存失败，请重试" }
+                try {
+                    if(incoming.containsKey("webdav_password")) {
+                        password.save(incoming["webdav_password"] as? String?:"",recoverPassword)
+                        appliedPassword=password.snapshot()
+                    }
+                    if(!editor.commit()) {
+                        val rollback=store.edit()
+                        incoming.keys.filter{it!="webdav_password"}.forEach{key->when(val value=before[key]){
+                            null->rollback.remove(key);is Boolean->rollback.putBoolean(key,value);is Int->rollback.putInt(key,value);is Float->rollback.putFloat(key,value);is String->rollback.putString(key,value)
+                        }}
+                        check(rollback.commit()){"设置保存失败且回滚未完成"}
+                        error("设置保存失败，请重试")
+                    }
+                }catch(e:Exception){appliedPassword?.let{password.rollback(it,oldPassword)};throw e}
             }
             reload()
         }

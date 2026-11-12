@@ -53,9 +53,12 @@ class ForumClient(private val context: android.content.Context? = null) {
             WebsiteSession(context).read(url)
         }
 
+    internal suspend fun sourceWithCookie(url:String,cookie:String) = request(url,null,cookie)
+
     private suspend fun request(
         url: String,
         fields: List<Pair<String, String>>?,
+        cookieOverride: String? = null,
     ): Pair<String, String> =
         withContext(Dispatchers.IO) {
             var target = url
@@ -78,7 +81,7 @@ class ForumClient(private val context: android.content.Context? = null) {
                     connection.readTimeout = 20000
                     connection.setRequestProperty("User-Agent", USER_AGENT)
                     connection.setRequestProperty("Referer", "$ORIGIN/")
-                    CookieManager.getInstance().getCookie(target)?.let {
+                    (cookieOverride ?: CookieManager.getInstance().getCookie(target))?.let {
                         connection.setRequestProperty("Cookie", it)
                     }
                     body?.let {
@@ -98,7 +101,7 @@ class ForumClient(private val context: android.content.Context? = null) {
                             .filterKeys { it?.equals("Set-Cookie", true) == true }
                             .values
                             .flatten()
-                    withContext(Dispatchers.Main) {
+                    if(cookieOverride==null)withContext(Dispatchers.Main) {
                         check(authCookie() == session) { "账号已变化，请重试" }
                         cookies.forEach { cookie ->
                             suspendCancellableCoroutine<Unit> { continuation ->

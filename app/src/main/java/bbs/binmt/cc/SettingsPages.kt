@@ -908,25 +908,33 @@ fun WebDavSettings(state: ForumState, modifier: Modifier) {
     var full by remember { mutableStateOf(false) }
     var operation by remember { mutableStateOf<String?>(null) }
     val busy = operation != null
-    var message by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf(state.settings.secretReadError.orEmpty()) }
+    var resultTitle by remember {mutableStateOf("连接测试结果")}
+    val focus=androidx.compose.ui.platform.LocalFocusManager.current
     var incoming by remember { mutableStateOf<JSONObject?>(null) }
     var confirmFull by remember { mutableStateOf(false) }
     fun run(kind: String, action: suspend () -> String) {
         if (busy) return
+        focus.clearFocus();message=""
+        resultTitle=when(kind){"test"->"连接测试结果";"upload"->"备份结果";else->"恢复结果"}
         operation = kind
         scope.launch {
             try {
-                state.settings.writeAll(fields.toMap())
+                BackupRules.server(fields.getValue("webdav_url"))
+                BackupRules.directory(fields.getValue("webdav_directory"))
+                require(fields.getValue("webdav_username").isNotBlank() && fields.getValue("webdav_password").isNotBlank()) { "请输入账号和授权密码" }
+                if(kind!="download" && kind!="restore") state.settings.writeAll(fields.toMap())
                 message = action()
-            } catch (failure: Exception) {
-                message = failure.message ?: "操作失败"
+            } catch(cancelled:kotlinx.coroutines.CancellationException){throw cancelled}
+            catch (failure: Exception) {
+                message = webDavError(failure)
             } finally {
                 operation = null
             }
         }
     }
     LazyColumn(
-        modifier,
+        modifier.imePadding(),
         contentPadding =
             PaddingValues(
                 start = 16.dp,
@@ -1079,7 +1087,7 @@ fun WebDavSettings(state: ForumState, modifier: Modifier) {
                         FilledTonalButton(
                             onClick = {
                                 run("download") {
-                                    incoming = service.download()
+                                    incoming = service.download(fields.toMap())
                                     ""
                                 }
                             },
@@ -1112,22 +1120,23 @@ fun WebDavSettings(state: ForumState, modifier: Modifier) {
     incoming?.let { data ->
         ConfirmDialog(
             "恢复备份",
-            "将覆盖备份中包含的设置和浏览历史。${if(data.optString("backup_mode")=="full") "此全量备份还将替换论坛会话和 WebDAV 密码。" else "不会替换论坛会话。"}",
+            "将覆盖备份中包含的设置和浏览历史。${if(data.optString("backup_mode")=="full") "此全量备份将恢复 WebDAV 密码；论坛凭据验证通过后才替换当前会话。" else "不会替换论坛会话。"}",
             { incoming = null },
         ) {
             incoming = null
             run("restore") {
-                service.restore(data)
+                val result=service.restore(data)
                 state.restored()
-                "恢复成功"
+                fields.keys.toList().forEach{fields[it]=state.settings.string(it)}
+                result
             }
         }
     }
-    if (message.isNotEmpty())
+    if (!busy && message.isNotEmpty())
         OriginalAlertDialog(
             onDismissRequest = { message = "" },
-            title = { Text("WebDAV备份") },
-            text = { Text(message) },
-            confirmButton = { TextButton(onClick = { message = "" }) { Text("关闭") } },
+            title = { Text(resultTitle) },
+            text = { Text(message, Modifier.verticalScroll(rememberScrollState())) },
+            confirmButton = { TextButton(onClick = { message = "" }) { Text("知道了") } },
         )
 }

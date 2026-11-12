@@ -70,6 +70,13 @@ object AccountService {
         return result
     }
 
+    internal suspend fun validateBackup(client:ForumClient, cookies:String, uid:String):Account {
+        cookiePairs(cookies)
+        val account=parse(client.sourceWithCookie("$ORIGIN/home.php?mod=space&do=profile",cookies).second)
+        check(account!=null && account.uid==uid){"备份凭据未通过账号验证"}
+        return account
+    }
+
     fun cookiePairs(raw: String): List<String> {
         require(raw.length <= 65536 && !raw.any { it.code < 32 || it.code == 127 }) { "备份会话格式无效" }
         val pairs = raw.split(';').map { it.trim() }.filter { it.isNotEmpty() }
@@ -79,31 +86,39 @@ object AccountService {
         return pairs
     }
 
-    suspend fun replaceCookies(raw: String) =
-        withContext(Dispatchers.Main) {
-            val pairs = cookiePairs(raw)
-            val manager = CookieManager.getInstance()
-            suspend fun set(cookie: String) =
-                suspendCancellableCoroutine<Unit> { continuation ->
-                    manager.setCookie(ORIGIN, cookie) { result ->
-                        if (continuation.isActive) {
-                            if (result) continuation.resume(Unit)
-                            else
-                                continuation.resumeWith(
-                                    Result.failure(IllegalStateException("会话写入失败"))
-                                )
-                        }
-                    }
-                }
-            cookiePairs(manager.getCookie(ORIGIN).orEmpty()).forEach { pair ->
-                val name = pair.substringBefore('=')
-                listOf("", "; Domain=bbs.binmt.cc", "; Domain=.binmt.cc").forEach { domain ->
-                    set("$name=; Path=/; Max-Age=0; Secure$domain")
-                }
+    private val cookieWrites=Mutex()
+    suspend fun replaceCookies(raw:String,expected:String?=null)=cookieWrites.withLock {
+        withContext(Dispatchers.Main.immediate+kotlinx.coroutines.NonCancellable) {
+            val manager=CookieManager.getInstance()
+            fun values(raw:String)=cookiePairs(raw).associate{it.substringBefore('=') to it.substringAfter('=')}
+            val old=values(manager.getCookie(ORIGIN).orEmpty());val incoming=values(raw)
+            check(expected==null || authCookie()==authCookie(expected)){"账号已改变，未替换当前会话"}
+            val owned=linkedMapOf<String,String?>()
+            suspend fun set(name:String,value:String?) {
+                val cookies=listOf("", "; Domain=bbs.binmt.cc", "; Domain=.binmt.cc").map { domain -> "$name=; Path=/; Max-Age=0; Secure$domain" } +
+                    if(value==null)emptyList()else listOf("$name=$value; Path=/; Secure; HttpOnly")
+                for(cookie in cookies)kotlinx.coroutines.withTimeout(5000) { suspendCancellableCoroutine<Unit>{continuation->
+                    manager.setCookie(ORIGIN,cookie){ok->if(continuation.isActive)continuation.resumeWith(if(ok)Result.success(Unit)else Result.failure(IllegalStateException("会话写入失败")))}
+                } }
             }
-            pairs.forEach { set("$it; Path=/; Secure; HttpOnly") }
-            manager.flush()
+            try {
+                for(name in old.keys+incoming.keys) {
+                    val current=values(manager.getCookie(ORIGIN).orEmpty())
+                    check(owned.all{current[it.key]==it.value} && (old.keys-owned.keys).all{current[it]==old[it]}){"账号已改变，已停止旧恢复"}
+                    if(old[name]==incoming[name])continue
+                    owned[name]=incoming[name]
+                    set(name,incoming[name])
+                }
+                manager.flush()
+            }catch(failure:Exception){
+                try {
+                    for((name,value) in owned)if(values(manager.getCookie(ORIGIN).orEmpty())[name]==value)set(name,old[name])
+                    manager.flush()
+                }catch(rollback:Exception){failure.addSuppressed(rollback)}
+                throw failure
+            }
         }
+    }
 
     fun parseSignIn(source: String): SignInInfo {
         val doc = Jsoup.parse(source, ORIGIN)

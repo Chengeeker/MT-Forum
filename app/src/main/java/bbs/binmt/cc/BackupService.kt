@@ -4,11 +4,14 @@ import android.webkit.CookieManager
 import java.net.URI
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -147,45 +150,24 @@ class BackupService(private val settings: SettingsStore, private val forum: Foru
                     .replace("+", "%20") + "/"
             )
 
-    private suspend fun request(
-        uri: URI,
-        method: String,
-        bytes: ByteArray? = null,
-    ): Pair<Int, ByteArray> =
-        withContext(Dispatchers.IO) {
-            val username = settings.string("webdav_username")
-            val password = settings.string("webdav_password")
-            require(!username.any { it in ":\r\n" } && !password.any { it in "\r\n" }) {
-                "账号或密码格式无效"
-            }
-            val body =
-                bytes?.toRequestBody("application/json; charset=utf-8".toMediaType())
-                    ?: if (method in setOf("PUT", "MKCOL", "PROPFIND"))
-                        ByteArray(0).toRequestBody(null)
-                    else null
-            val request =
-                Request.Builder()
-                    .url(uri.toString())
-                    .method(method, body)
-                    .header(
-                        "Authorization",
-                        okhttp3.Credentials.basic(username, password, Charsets.UTF_8),
-                    )
-                    .header("Depth", "0")
-                    .build()
-            http.newCall(request).execute().use { response ->
-                response.code to
-                    (response.body?.byteStream()?.use { it.readNBytesCompat(BackupRules.maxBytes) }
-                        ?: ByteArray(0))
-            }
-        }
+    private val transport = WebDavTransport(http, BackupRules.maxBytes.toLong())
+    private suspend fun request(uri: URI, method: String, bytes: ByteArray? = null, authorization: String? = null): Pair<Int, ByteArray> {
+        val username = settings.string("webdav_username")
+        val password = if(authorization==null)settings.requireReadablePassword()else ""
+        require(!username.any { it in ":\r\n" } && !password.any { it in "\r\n" }) { "账号或密码格式无效" }
+        val response = transport.request(uri.toString().toHttpUrl(), method, (authorization ?: okhttp3.Credentials.basic(username, password, Charsets.UTF_8)), bytes)
+        response.requireStatus(if (method == "GET") "下载" else method, if (method == "MKCOL") setOf(200, 201, 405) else setOf(200, 201, 204, 207))
+        return response.code to response.bytes
+    }
 
     suspend fun test() {
         check(request(base(), "PROPFIND").first in setOf(200, 207)) { "连接失败，请检查服务器、账号与授权密码" }
     }
 
     suspend fun export(full: Boolean): JSONObject {
+        if(full)settings.requireReadablePassword()
         val values = settings.snapshot().filterKeys { full || it != "webdav_password" }
+        val sessionBefore=authCookie()
         val data =
             JSONObject()
                 .put("app", "bbs.binmt.cc")
@@ -211,6 +193,8 @@ class BackupService(private val settings: SettingsStore, private val forum: Foru
                         .put("cookies", CookieManager.getInstance().getCookie(ORIGIN).orEmpty()),
             )
         }
+        check(sessionBefore==authCookie()){"账号已变化，请重新备份"}
+        data.put("accountMode",if(sessionBefore.isEmpty())"GUEST"else"COOKIE")
         BackupRules.validate(data)
         return data
     }
@@ -237,43 +221,55 @@ class BackupService(private val settings: SettingsStore, private val forum: Foru
         }
     }
 
-    suspend fun download(): JSONObject {
-        val response = request(folder().resolve("backup_mt_forum_latest.json"), "GET")
+    suspend fun download(config: Map<String,String>? = null): JSONObject {
+        val target=if(config==null)folder() else BackupRules.server(config.getValue("webdav_url")).resolve(encode(BackupRules.directory(config.getValue("webdav_directory"))).replace("+","%20")+"/")
+        val authorization=config?.let{okhttp3.Credentials.basic(it.getValue("webdav_username"),it.getValue("webdav_password"),Charsets.UTF_8)}
+        val response = request(target.resolve("backup_mt_forum_latest.json"), "GET", authorization=authorization)
         check(response.first == 200) { "读取备份失败（HTTP ${response.first}）" }
-        return JSONObject(response.second.toString(Charsets.UTF_8)).also {
+        return WebDavResponse(response.first, response.second, null).json().also {
             BackupRules.validate(it)
         }
     }
 
-    suspend fun restore(data: JSONObject) {
-        val incoming = BackupRules.validate(data).toMutableMap()
-        val full = data.getString("backup_mode") == "full"
-        if (
-            !full &&
-                listOf("webdav_url", "webdav_username").any {
-                    incoming.containsKey(it) && incoming[it] != settings.string(it)
-                }
-        )
-            incoming["webdav_password"] = null
-        if (full && !incoming.containsKey("webdav_password")) incoming["webdav_password"] = null
-        val old = settings.snapshot()
-        val cookies = CookieManager.getInstance().getCookie(ORIGIN).orEmpty()
-        try {
-            if (full)
-                AccountService.replaceCookies(
-                    data.optJSONObject("forum_session")?.optString("cookies").orEmpty()
-                )
-            settings.writeAll(incoming)
-        } catch (failure: Exception) {
+    suspend fun restore(data: JSONObject, verify: suspend (String,String)->Unit = { cookie,uid->AccountService.validateBackup(forum,cookie,uid);Unit }):String = restoreMutex.withLock {
+        val incoming=BackupRules.validate(data).toMutableMap()
+        val full=data.getString("backup_mode")=="full"
+        val old=settings.snapshot();val oldPassword=settings.passwordSnapshot()
+        val cookies=CookieManager.getInstance().getCookie(ORIGIN).orEmpty()
+        val candidate=if(full)data.optJSONObject("forum_session")else null
+        var verified=false
+        if(candidate!=null) {
+            try{verify(candidate.getString("cookies"),candidate.getString("uid"));verified=true}
+            catch(e:kotlinx.coroutines.CancellationException){throw e}
+            catch(_:Exception){}
+        }
+        if(!full && listOf("webdav_url","webdav_username").any{incoming.containsKey(it)&&incoming[it]!=old[it]})incoming["webdav_password"]=null
+        if(full && !incoming.containsKey("webdav_password"))incoming["webdav_password"]=null
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        check(authCookie()==authCookie(cookies) && settings.snapshot()==old){"账号或设置已改变，请重新恢复"}
+        var applied:Map<String,Any>?=null;var appliedPassword:Map<String,*>?=null;var wroteCookies=false
+        withContext(NonCancellable) {
             try {
-                withContext(NonCancellable) {
-                    if (full) AccountService.replaceCookies(cookies)
-                    settings.writeAll(old)
+                settings.writeAll(incoming,old,recoverPassword=full);applied=old+incoming.mapValues{it.value?:SettingsStore.defaults.getValue(it.key)};appliedPassword=settings.passwordSnapshot()
+                if(verified) {
+                    check(authCookie()==authCookie(cookies)){"账号已改变，未替换当前会话"}
+                    AccountService.replaceCookies(candidate!!.getString("cookies"),expected=cookies);wroteCookies=true
                 }
-            } catch (_: Exception) {
-                error("恢复失败且本机回滚未完成，请检查设置并重新登录论坛")
+            }catch(failure:Exception){
+                try {
+                    if(wroteCookies && authCookie()==authCookie(candidate!!.getString("cookies")))AccountService.replaceCookies(cookies)
+                    applied?.let{settings.writeAll(incoming.keys.filter{key->key!="webdav_password"}.associateWith{key->old[key]},it)}
+                    appliedPassword?.let{settings.rollbackPassword(it,oldPassword)}
+                }catch(rollback:Exception){failure.addSuppressed(rollback)}
+                throw failure
             }
-            throw failure
+        }
+        when {
+            verified->"设置和本地资料已恢复，账号登录已通过验证并恢复。"
+            candidate!=null->"资料已恢复，但账号登录未恢复，请重试或重新登录。当前会话保持不变。"
+            full->"设置和本地资料已恢复。备份未包含有效登录凭据，当前会话保持不变。"
+            else->"设置和本地资料已恢复，当前账号登录保持不变。"
         }
     }
+    companion object {private val restoreMutex=kotlinx.coroutines.sync.Mutex()}
 }

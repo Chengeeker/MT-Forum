@@ -1,6 +1,6 @@
 # MT论坛
 
-面向 Android 的 Jetpack Compose 论坛客户端，连接 [MT 论坛](https://bbs.binmt.cc/)。当前版本为 1.6.19+71，包名为 `bbs.binmt.cc`，支持 Android 7.0 及以上，仅发布 arm64-v8a APK。
+面向 Android 的 Jetpack Compose 论坛客户端，连接 [MT 论坛](https://bbs.binmt.cc/)。当前版本为 1.6.20+72，包名为 `bbs.binmt.cc`，支持 Android 7.0 及以上，仅发布 arm64-v8a APK。
 
 ## 构建
 

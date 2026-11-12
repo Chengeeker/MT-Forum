@@ -1,4 +1,4 @@
-param([switch]$Offline, [string]$BuildDirectory)
+param([switch]$Offline, [string]$BuildDirectory, [string]$GradleExecutable)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'build_temp.ps1')
@@ -26,16 +26,20 @@ try {
     New-Item -ItemType Directory -Force -Path $snapshot | Out-Null
     & robocopy $root $snapshot /E /XJ /XD build tmp signing .gradle .git .idea .agents .codex /XF '*.apk' '*.local.json' '*.p12' '*.bks' '*.log' /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -gt 7) { throw 'Source snapshot failed' }
-    ('sdk.dir=' + ($env:LOCALAPPDATA + '\Android\Sdk').Replace('\','\\')) | Set-Content -LiteralPath (Join-Path $snapshot 'local.properties') -Encoding ascii
+    $sdkRoot=if($env:ANDROID_HOME){$env:ANDROID_HOME}else{Join-Path $env:LOCALAPPDATA 'Android\Sdk'}
+    ('sdk.dir=' + $sdkRoot.Replace('\','\\')) | Set-Content -LiteralPath (Join-Path $snapshot 'local.properties') -Encoding ascii
+    $fixture=Join-Path $root 'app/src/test/resources/webdav-synthetic.p12'
+    if(Test-Path -LiteralPath $fixture){Copy-Item -LiteralPath $fixture -Destination (Join-Path $snapshot 'app/src/test/resources/webdav-synthetic.p12') -Force}
     Push-Location $snapshot
     try {
         $arguments = @('--console=plain', '--no-daemon', 'testReleaseUnitTest', 'assembleRelease')
         if ($Offline) { $arguments += '--offline' }
-        & .\gradlew.bat @arguments
+        if(!$GradleExecutable){$GradleExecutable=Join-Path $snapshot "gradlew.bat"}
+        & $GradleExecutable @arguments
         if ($LASTEXITCODE) { throw 'Compose tests or build failed' }
     } finally { Pop-Location }
     $apk = Join-Path $snapshot 'app\build\outputs\apk\release\app-release.apk'
-    $sdkTools = Join-Path $env:LOCALAPPDATA 'Android\Sdk\build-tools\37.0.0'
+    $sdkTools = Join-Path $sdkRoot 'build-tools\37.0.0'
     $signature = & (Join-Path $sdkTools 'apksigner.bat') verify --print-certs $apk
     if ($LASTEXITCODE) { throw 'Signature verification failed' }
     if (-not ($signature -match '3eb0f6708904f8ef916c6a2572e394ba981ee25d64861344cf1921ca7ea17975')) { throw 'Signing identity differs from Flutter baseline' }
@@ -43,7 +47,7 @@ try {
     & (Join-Path $sdkTools 'zipalign.exe') -c -P 16 4 $apk
     if ($LASTEXITCODE) { throw 'APK alignment failed' }
     $badging = & (Join-Path $sdkTools 'aapt.exe') dump badging $apk
-    if ($LASTEXITCODE -or $badging[0] -notlike "*name='bbs.binmt.cc' versionCode='71' versionName='1.6.19'*") { throw 'Unexpected package/version' }
+    if ($LASTEXITCODE -or $badging[0] -notlike "*name='bbs.binmt.cc' versionCode='72' versionName='1.6.20'*") { throw 'Unexpected package/version' }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead($apk)
     try {
@@ -51,7 +55,7 @@ try {
         if ($abis.Count -ne 1 -or $abis[0] -ne 'arm64-v8a') { throw 'Unexpected native ABIs' }
         if ($zip.Entries.FullName -match 'libflutter.so|libapp.so|flutter_assets/') { throw 'Unexpected Flutter runtime' }
     } finally { $zip.Dispose() }
-    $output = Join-Path $root 'MT论坛_v1.6.19_arm64.apk'
+    $output = Join-Path $root 'MT论坛_v1.6.20_arm64.apk'
     Copy-Item -LiteralPath $apk -Destination $output
     New-Item -ItemType Directory -Force (Join-Path $root 'build') | Out-Null
     Copy-Item -LiteralPath (Join-Path $snapshot 'app\build\test-results\testReleaseUnitTest') -Destination (Join-Path $root 'build') -Recurse -Force
