@@ -439,7 +439,7 @@ fun GalleryDialog(
                         ) {
                             GalleryButton(state, ::close) {
                                 Icon(
-                                    Icons.AutoMirrored.Rounded.ArrowBack,
+                                    if (state.settings.bool("liquidGlass")) Icons.AutoMirrored.Rounded.ArrowBack else Icons.AutoMirrored.Outlined.ArrowBack,
                                     "返回",
                                     Modifier.size(
                                         22.dp
