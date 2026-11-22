@@ -485,7 +485,7 @@ fun GalleryDialog(
                             val cell = maxWidth * .16f
                             HorizontalPager(thumbs, Modifier.fillMaxWidth().height(64.dp), pageSize = PageSize.Fixed(cell),
                                 contentPadding = PaddingValues(horizontal = (maxWidth - cell) / 2),
-                                flingBehavior = PagerDefaults.flingBehavior(thumbs, pagerSnapDistance = PagerSnapDistance.atMost(images.size))) { index ->
+                                flingBehavior = PagerDefaults.flingBehavior(thumbs, pagerSnapDistance = PagerSnapDistance.atMost(images.size)), overscrollEffect = null) { index ->
                                 val selected = pager.currentPage == index
                                 val outline = RoundedCornerShape(8.dp)
                                 Box(Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = 2.dp)
