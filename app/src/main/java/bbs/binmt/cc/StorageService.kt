@@ -106,7 +106,7 @@ class ImageCache(private val context: Context) {
     private val directory = File(context.cacheDir, "compose_cacheimage")
 
     fun root(): File {
-        require(directory.canonicalFile == directory.absoluteFile) { "图片缓存目录不是普通目录" }
+        require(directory.canonicalFile == File(context.cacheDir.canonicalFile, directory.name)) { "图片缓存目录不是普通目录" }
         directory.mkdirs()
         return directory
     }

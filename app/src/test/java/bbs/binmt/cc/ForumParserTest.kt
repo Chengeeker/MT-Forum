@@ -7,6 +7,14 @@ class ForumParserTest {
     private fun fixture(name: String) = javaClass.getResource("/fixtures/$name.html")!!.readText()
 
     @Test
+    fun challengeIsNotAnEmptyGuidePage() {
+        try {
+            ForumParser.parse("<html><script>document.cookie='acw_sc__v2=x'</script></html>", HOME_LATEST)
+            fail("A verification response must trigger the browser fallback")
+        } catch (_: IllegalStateException) {}
+    }
+
+    @Test
     fun trustBoundaryRejectsCredentialsPortsAndOtherHosts() {
         assertNull(safeUrl("https://user@bbs.binmt.cc/"))
         assertNull(safeUrl("javascript:alert(1)"))

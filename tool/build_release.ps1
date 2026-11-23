@@ -47,7 +47,7 @@ try {
     & (Join-Path $sdkTools 'zipalign.exe') -c -P 16 4 $apk
     if ($LASTEXITCODE) { throw 'APK alignment failed' }
     $badging = & (Join-Path $sdkTools 'aapt.exe') dump badging $apk
-    if ($LASTEXITCODE -or $badging[0] -notlike "*name='bbs.binmt.cc' versionCode='72' versionName='1.6.20'*") { throw 'Unexpected package/version' }
+    if ($LASTEXITCODE -or $badging[0] -notlike "*name='bbs.binmt.cc' versionCode='76' versionName='1.6.24'*") { throw 'Unexpected package/version' }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead($apk)
     try {
@@ -55,7 +55,7 @@ try {
         if ($abis.Count -ne 1 -or $abis[0] -ne 'arm64-v8a') { throw 'Unexpected native ABIs' }
         if ($zip.Entries.FullName -match 'libflutter.so|libapp.so|flutter_assets/') { throw 'Unexpected Flutter runtime' }
     } finally { $zip.Dispose() }
-    $output = Join-Path $root 'MT论坛_v1.6.20_arm64.apk'
+    $output = Join-Path $root 'MT论坛_v1.6.24_arm64.apk'
     Copy-Item -LiteralPath $apk -Destination $output
     New-Item -ItemType Directory -Force (Join-Path $root 'build') | Out-Null
     Copy-Item -LiteralPath (Join-Path $snapshot 'app\build\test-results\testReleaseUnitTest') -Destination (Join-Path $root 'build') -Recurse -Force

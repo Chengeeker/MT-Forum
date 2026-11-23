@@ -191,6 +191,9 @@ object ForumParser {
     fun parse(source: String, url: String): Page {
         require(sameOrigin(url)) { "只解析同源论坛页面" }
         val doc = Jsoup.parse(source, url)
+        check(!(source.contains("acw_sc__v2") && doc.selectFirst("#ct, #wp") == null)) {
+            "网站需要验证，请稍后重试"
+        }
         val title =
             doc.selectFirst("#thread_subject,.comiis_infotit h1 a,h1")
                 ?.let { node ->

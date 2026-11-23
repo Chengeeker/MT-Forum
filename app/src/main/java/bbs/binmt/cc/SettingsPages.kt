@@ -669,10 +669,10 @@ fun AboutDialog(close: () -> Unit, open: (String) -> Unit) {
                         }
                     }
                     Spacer(Modifier.height(6.dp))
-                    Text("Material 3 论坛客户端", fontSize = 13.sp, color = colors.onSurfaceVariant)
+                    Text("简洁的论坛客户端", fontSize = 13.sp, color = colors.onSurfaceVariant)
                     Spacer(Modifier.height(30.dp))
                     listOf(
-                            Icons.Outlined.Palette to "Material 3 动态配色与个性化主题",
+                            Icons.Outlined.Palette to "液态玻璃效果与个性化主题",
                             Icons.Outlined.Forum to "论坛浏览、搜索、消息与后台签到",
                             Icons.Outlined.PhotoLibrary to "图片画廊、视频播放与 WebDAV 备份",
                         )

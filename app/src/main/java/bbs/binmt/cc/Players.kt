@@ -189,7 +189,7 @@ fun GalleryDialog(
     val pager = rememberPagerState(initialPage = selection.index, pageCount = { images.size })
     val thumbs = rememberPagerState(initialPage = selection.index, pageCount = { images.size })
     val reelDriving = remember { mutableStateOf(false) }
-    GalleryPagerSync(pager, thumbs, reelDriving) { state.haptic(android.view.HapticFeedbackConstants.CLOCK_TICK) }
+    GalleryPagerSync(pager, thumbs, reelDriving) { state.haptic() }
     val save = mediaSaver(state, author)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -262,6 +262,7 @@ fun GalleryDialog(
                                 .pointerInput(index) {
                                     detectTapGestures(
                                         onDoubleTap = { anchor ->
+                                            state.haptic()
                                             animation?.cancel()
                                             val start = transform
                                             val target = ImageGeometry.nextScale(start.scale, image)
