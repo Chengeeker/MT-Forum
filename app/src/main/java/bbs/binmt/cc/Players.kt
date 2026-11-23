@@ -189,7 +189,7 @@ fun GalleryDialog(
     val pager = rememberPagerState(initialPage = selection.index, pageCount = { images.size })
     val thumbs = rememberPagerState(initialPage = selection.index, pageCount = { images.size })
     val reelDriving = remember { mutableStateOf(false) }
-    GalleryPagerSync(pager, thumbs, reelDriving)
+    GalleryPagerSync(pager, thumbs, reelDriving) { state.haptic(android.view.HapticFeedbackConstants.CLOCK_TICK) }
     val save = mediaSaver(state, author)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -485,7 +485,7 @@ fun GalleryDialog(
                             val cell = maxWidth * .16f
                             HorizontalPager(thumbs, Modifier.fillMaxWidth().height(64.dp), pageSize = PageSize.Fixed(cell),
                                 contentPadding = PaddingValues(horizontal = (maxWidth - cell) / 2),
-                                flingBehavior = PagerDefaults.flingBehavior(thumbs, pagerSnapDistance = PagerSnapDistance.atMost(images.size)), overscrollEffect = null) { index ->
+                                flingBehavior = rememberGalleryThumbnailFling(thumbs), overscrollEffect = null) { index ->
                                 val selected = pager.currentPage == index
                                 val outline = RoundedCornerShape(8.dp)
                                 Box(Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = 2.dp)
@@ -519,6 +519,7 @@ internal fun GalleryPagerSync(
     pager: PagerState,
     thumbnails: PagerState,
     reelDriving: MutableState<Boolean>,
+    onTick: () -> Unit,
 ): Boolean {
     val reelDragged by thumbnails.interactionSource.collectIsDraggedAsState()
     val mainDragged by pager.interactionSource.collectIsDraggedAsState()
@@ -529,14 +530,21 @@ internal fun GalleryPagerSync(
         } else if (mainDragged) {
             reelDriving.value = false
             thumbnails.stopScroll()
-            thumbnails.requestScrollToPage(pager.currentPage)
         }
     }
     LaunchedEffect(pager) {
-        snapshotFlow { pager.currentPage }
-            .collect { index -> if (!reelDriving.value) thumbnails.requestScrollToPage(index) }
+        snapshotFlow { Triple(reelDriving.value, pager.currentPage, pager.currentPageOffsetFraction) }
+            .collect { (driving, index, fraction) ->
+                if (!driving) {
+                    val position = (index + fraction).coerceIn(0f, (thumbnails.pageCount - 1).coerceAtLeast(0).toFloat())
+                    val nearest = position.roundToInt()
+                    thumbnails.requestScrollToPage(nearest, position - nearest)
+                }
+            }
     }
     LaunchedEffect(thumbnails) {
+        var previousPage = thumbnails.currentPage
+        var lastTick = 0L
         snapshotFlow {
                 Triple(
                     reelDriving.value,
@@ -553,6 +561,11 @@ internal fun GalleryPagerSync(
                             (pager.pageCount - 1).coerceAtLeast(0).toFloat(),
                         )
                     val nearest = position.roundToInt()
+                    if (nearest != previousPage) {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - lastTick >= 12L) { onTick(); lastTick = now }
+                    }
+                    previousPage = nearest
                     pager.requestScrollToPage(nearest, position - nearest)
                 }
             }

@@ -10,8 +10,8 @@ android {
         applicationId = "bbs.binmt.cc"
         minSdk = 24
         targetSdk = 36
-        versionCode = 74
-        versionName = "1.6.22"
+        versionCode = 75
+        versionName = "1.6.23"
         ndk { abiFilters += "arm64-v8a" }
     }
     signingConfigs {
